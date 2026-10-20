@@ -26,8 +26,6 @@ unzipped folder: `... | bash -s -- --pack ~/Downloads/pack.rar`.
 
 To go back to the original text: `... | bash -s -- --remove-pack`.
 
-The rest of this page is what that does, for doing it by hand or for other kinds of replacements.
-
 ## Rules
 
 - A file in `overrides/` replaces the Steam file with the same name.
@@ -47,8 +45,7 @@ cp pack/data.win ~/Library/Application\ Support/VA-11\ Hall-A/overrides/
 cp -R pack/scripts ~/Library/Application\ Support/VA-11\ Hall-A/overrides/
 ```
 
-Start the app. Packs replace one of the three language entries; the text of the language shown on the first screen (for
-example "English") is what the pack changed.
+Start the app. A pack replaces one language entry (for example the English text), and the rest still come from Steam.
 
 To go back to the original game, remove the files you added from `overrides/`, or run the installer with `--remove-pack`.
 

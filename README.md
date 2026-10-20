@@ -19,9 +19,9 @@ You need the game installed in Steam first. Then:
 
 3. When it says "All set", go back to Steam and press **Play**.
 
-That is all. It takes about a minute and needs nothing else installed: no developer tools, no Rosetta.
+It takes about a minute and needs nothing else installed: no developer tools, no Rosetta.
 
-What the line does, so there are no surprises:
+What the line does:
 
 - It downloads a ready-made app (about 2 MB), checks the download, and puts it in `~/Applications`.
 - It replaces one file in the game's Steam folder, `Mac_Runner`, with a few lines that start the app. Steam's original
@@ -40,7 +40,7 @@ It works on macOS 11 or newer on Apple Silicon, and macOS 10.15 or newer on Inte
 
 ### Other things you can do
 
-Add the options after `bash -s --`. For example, to see what the installer finds on your Mac:
+Add the options after `bash -s --`:
 
 ```sh
 curl -fsSL https://github.com/kecan0406/va11-hall-a-mac/releases/latest/download/install.sh | bash -s -- --doctor
@@ -96,7 +96,7 @@ what the game needs on a Mac:
 | `0005` room warp | Lets a recording jump to a room the game only enters through its own logic. Test aid only. |
 | `0006` data files | Loads data files whose fonts and strings sit outside their own chunks, as fan translations built with font tools have. |
 
-These are fixes to Butterscotch, not to the game, and could go upstream.
+These are fixes to Butterscotch, not to the game.
 
 ## Does it work? Checking, not claiming
 
