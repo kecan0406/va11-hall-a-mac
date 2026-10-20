@@ -38,9 +38,9 @@ Lines starting with `@` tell `verify.py` how to run and judge the scenario. They
 
 ## The scenarios that ship
 
-- `golden_path`: a new game with the mouse only, from the language screen to the first shift: title menu, the notice
-  after "New Game", the bar prologue, the "Chapter 1" card, Jill's room, and back to the bar. Text boxes are advanced by
-  clicking inside them, which is why the cursor moves between the notice and the text box.
+- `golden_path`: a new game with the mouse only, from the language screen to the first shift: the title menu, the
+  screens of the game's opening, a room, and the bar. Text boxes are advanced by clicking inside them, which is why the
+  cursor moves between screens.
 - `rooms_traversal`: PageUp walks the rooms in the game's room order, 90 frames in each.
 - `rooms_warp`: after the intros, jumps into the rooms the traversal can't reach and lets each run for 150 frames.
 - `mouse_roundtrip`: one click, replayed while recording.

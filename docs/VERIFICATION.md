@@ -30,7 +30,7 @@ Each row is a claim, how it is measured, and the criterion that decides pass or 
 | Audio | Every sound plays | Decode all embedded sounds with the runner's own code path | All decode to non-silent audio |
 | Smoke | The game runs without errors | Scripted play, then scan the runner's log | Exit code 0, no error line, no warning outside the allowlist |
 | Rooms | Every room loads and runs | Walk the room order, jump into the rest | The expected rooms are entered |
-| Golden path | A real game works from the title screen on | Replay a mouse-only session: new game, prologue, chapter 1, first shift | The expected room sequence, in order |
+| Golden path | A real game works from the title screen on | Replay a mouse-only session: the game's opening, to the first shift | The expected room sequence, in order |
 | Determinism | Results don't depend on timing or luck | Replay every scenario twice | Same rooms and byte-identical screenshots |
 | Regression | Nothing changed since the last known-good state | Screenshot hashes against a baseline recorded on this Mac | Equal (when a baseline exists for this Mac and runner build) |
 | Input | Recording and replay agree | Replay a click while re-recording it | Same mouse events on the same frames |
@@ -55,7 +55,7 @@ Apple Silicon, macOS 27.2, runner built from Butterscotch `54e10ec` plus the pat
   The unit test fails 10 of 10 checks without the patch and passes 10 of 10 with it.
 - **Rooms**: all 46 rooms are entered and run without errors: 31 by walking the room order and the golden path, the other
   15 (game over, shooting minigame, loading screens, ...) by jumping into them.
-- **Golden path**: new game, prologue, chapter 1, first shift. 10 room changes, in the expected order.
+- **Golden path**: the game's opening, played through to the first shift. 10 room changes, in the expected order.
 - **Determinism**: every scenario, replayed twice, gives identical room sequences and byte-identical screenshots.
 - **Input round trip**: replaying a click while recording gives back the same events on the same frames.
 - **A translated game** (a fan translation from April 2017 that replaces `data.win` and `scripts/eng`, applied through
@@ -99,9 +99,9 @@ baseline is stored per machine and not in the repository. Determinism is checked
 - **The drink-mixing minigame.** It is dragged with the mouse and gated on game state the scripted session doesn't set
   up. The rooms load and run, but nobody has mixed a drink automatically.
 - **Rooms entered by warping** run for 150 frames each. That shows they load and don't error, not that they play.
-- **Anything that waits for sound to finish.** The credits and the ending playlist move on when the music ends. Sound runs
-  on the real clock while scenarios run faster than real time, so what happens after the credits isn't reproducible. The
-  room traversal stops right after them for that reason.
+- **Anything that waits for sound to finish.** The sequences at the end of the game move on only when the current song
+  ends. Sound runs on the real clock while scenarios run faster than real time, so those sequences aren't reproducible.
+  The room traversal stops right before them for that reason.
 - **The Steam hook after Steam changes the game.** "Verify integrity of game files" or an update puts Steam's own
   `Mac_Runner` back. `install.sh --doctor` shows the state of the Play button and running the installer again connects it. Which
   Steam actions do that was not tested.

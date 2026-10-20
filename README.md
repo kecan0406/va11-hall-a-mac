@@ -70,33 +70,11 @@ To update the app to a newer version, run the install line again.
 - The drink-mixing minigame, sound output and the Japanese and Chinese texts are covered by the
   [manual checklist](docs/QA_CHECKLIST.md), not by automatic tests.
 
-## For developers
-
-```sh
-git clone https://github.com/kecan0406/va11-hall-a-mac.git && cd va11-hall-a-mac
-./build.sh                  # builds the runner, then runs install.sh with it
-./build.sh --build-only     # just build/dist/butterscotch
-```
-
-Needs the Xcode command line tools (`xcode-select --install`). Options `build.sh` doesn't know are handed to
-`install.sh`.
-
 ## How it works
 
-`build.sh` (for developers) fetches Butterscotch at a pinned commit, applies the patches in `patches/` and builds it.
-`install.sh` wraps the runner in an app bundle with a small launcher and connects Steam's Play button. The patches fix
-what the game needs on a Mac:
-
-| Patch | Why |
-|---|---|
-| `0001` audio | Ogg files that carry a Theora video stream next to the Vorbis audio were silent; the patch hands the decoder only the Vorbis pages. |
-| `0002` mouse | The cursor was mirrored vertically, and on Retina displays it ran up to twice the real position. |
-| `0003` input recording | Records and replays the mouse, not just the keyboard. This is what the automatic checks use; record your own play with `--record-inputs`. |
-| `0004` fullscreen | Implements the fullscreen functions the game's options menu uses. |
-| `0005` room warp | Lets a recording jump to a room the game only enters through its own logic. Test aid only. |
-| `0006` data files | Loads data files whose fonts and strings sit outside their own chunks, as fan translations built with font tools have. |
-
-These are fixes to Butterscotch, not to the game.
+The app wraps the Butterscotch runner with a small launcher, and the installer replaces one file in the game's Steam
+folder so that Play starts it. The patches that make the game run on a Mac, and the build tooling and checks, are in
+[docs/DEVELOPERS.md](docs/DEVELOPERS.md).
 
 ## Does it work? Checking, not claiming
 

@@ -5,7 +5,7 @@ the things a person has to try. Tick them off on your Mac and report what you fi
 and whether the display is Retina.
 
 Play from a fresh start if you can (move `~/Library/Application Support/VA-11 Hall-A/saves/` out of the way). If you want
-to share a session as a test, start it with `--record-inputs my_session.json` (see the README).
+to share a session as a test, start it with `--record-inputs my_session.json` (see [SCENARIOS.md](SCENARIOS.md)).
 
 ## Sound (the automatic check only proves every sound decodes)
 
@@ -13,7 +13,7 @@ to share a session as a test, start it with `--record-inputs my_session.json` (s
 - [ ] Music plays in the bar, and changes with the track chosen in the Jukebox
 - [ ] Sound effects play (clicking, pouring, serving)
 - [ ] Volume sliders in Settings change the volume of both music and effects
-- [ ] The tracks that used to be silent play now: _last_call_ (credits) and the startup jingle
+- [ ] The tracks that used to be silent play now
 - [ ] No crackling, stutter or music cutting off after a few minutes
 
 ## Mouse (patch 0002)
@@ -32,7 +32,7 @@ to share a session as a test, start it with `--record-inputs my_session.json` (s
 
 ## Game flow
 
-- [ ] A whole in-game day, from Jill's room to the end-of-day results
+- [ ] A whole in-game day, from the room it starts in to the end-of-day results
 - [ ] Save, quit, start again, Load: the same state comes back
 - [ ] Settings are remembered after a restart (language, volume, fullscreen)
 - [ ] The shop works; the Jukebox plays the tracks you bought
