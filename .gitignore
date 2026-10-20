@@ -1,0 +1,6 @@
+build/
+verify/report/
+verify/baseline.json
+.DS_Store
+__pycache__/
+*.pyc

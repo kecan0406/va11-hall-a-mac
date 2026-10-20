@@ -1,0 +1,23 @@
+@exit 3400
+@rooms-visit game_over_room shooting_room load_room endcard skip_room codecload2 sunday2load preroom start_room julianne_level game_over_shmup test_room room0 room5 room6
+
+60 move 640 336
+65 click left
+70 move 640 400
+300..975/45 click left
+
+1000 warp game_over_room
+1150 warp shooting_room
+1300 warp load_room
+1450 warp endcard
+1600 warp skip_room
+1750 warp codecload2
+1900 warp sunday2load
+2050 warp preroom
+2200 warp start_room
+2350 warp julianne_level
+2500 warp game_over_shmup
+2650 warp test_room
+2800 warp room0
+2950 warp room5
+3100 warp room6

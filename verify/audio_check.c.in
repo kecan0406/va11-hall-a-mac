@@ -1,0 +1,55 @@
+#include <math.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define repeat(n, i) for (size_t i = 0; (i) < (size_t)(n); (i)++)
+#define safeMalloc malloc
+#define STB_DS_IMPLEMENTATION
+#include "stb_ds.h"
+#include "stb_vorbis.c"
+
+typedef struct { bool present; uint32_t dataOffset; uint32_t dataSize; uint8_t* data; } AudioEntry;
+
+@DEMUX@
+
+int main(int argc, char** argv) {
+    int bad = 0, demuxed = 0;
+    for (int a = 1; a < argc; a++) {
+        FILE* fp = fopen(argv[a], "rb");
+        if (fp == NULL) { printf("BAD %s unreadable\n", argv[a]); bad++; continue; }
+        fseek(fp, 0, SEEK_END);
+        long n = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+        uint8_t* buf = malloc(n);
+        if (fread(buf, 1, n, fp) != (size_t) n) { printf("BAD %s short read\n", argv[a]); bad++; fclose(fp); continue; }
+        fclose(fp);
+
+        AudioEntry* entry = malloc(sizeof(AudioEntry));
+        *entry = (AudioEntry){ true, 0, (uint32_t) n, buf };
+        uint32_t size;
+        const uint8_t* data = getDecodableAudio(entry, &size);
+        bool wasMixed = data != buf;
+        if (wasMixed) demuxed++;
+
+        int channels, rate;
+        short* pcm;
+        int samples = stb_vorbis_decode_memory(data, (int) size, &channels, &rate, &pcm);
+        double peak = 0;
+        for (int i = 0; i < samples * channels; i++) {
+            double v = fabs(pcm[i] / 32768.0);
+            if (v > peak) peak = v;
+        }
+        if (samples <= 0 || peak == 0) {
+            printf("BAD %s samples=%d peak=%.3f\n", argv[a], samples, peak);
+            bad++;
+        } else {
+            printf("ok %s channels=%d rate=%d seconds=%.2f peak=%.2f mixed=%d\n", argv[a], channels, rate, (double) samples / rate, peak, wasMixed);
+        }
+        if (samples > 0) free(pcm);
+    }
+    printf("total=%d mixed=%d bad=%d\n", argc - 1, demuxed, bad);
+    return bad != 0;
+}

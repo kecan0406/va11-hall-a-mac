@@ -1,0 +1,140 @@
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define repeat(n, i) for (size_t i = 0; (i) < (size_t)(n); (i)++)
+#define safeMalloc malloc
+#define STB_DS_IMPLEMENTATION
+#include "stb_ds.h"
+
+typedef struct { bool present; uint32_t dataOffset; uint32_t dataSize; uint8_t* data; } AudioEntry;
+
+@DEMUX@
+
+static int failures = 0;
+#define EXPECT(cond, ...) do { if (cond) { printf("ok   "); } else { printf("FAIL "); failures++; } printf(__VA_ARGS__); printf("\n"); } while (0)
+
+typedef struct { uint8_t bytes[4096]; uint32_t size; } Stream;
+
+static uint32_t addPage(Stream* s, uint32_t serial, bool firstPage, const char* body, uint32_t bodySize) {
+    uint32_t start = s->size;
+    uint8_t* p = s->bytes + s->size;
+    memcpy(p, "OggS", 4);
+    p[4] = 0;
+    p[5] = firstPage ? 0x02 : 0x00;
+    memset(p + 6, 0, 8);
+    memcpy(p + 14, &serial, 4);
+    memset(p + 18, 0, 8);
+    p[26] = 1;
+    p[27] = (uint8_t) bodySize;
+    memcpy(p + 28, body, bodySize);
+    s->size += 28 + bodySize;
+    return start;
+}
+
+static AudioEntry* entryFor(const uint8_t* data, uint32_t size) {
+    AudioEntry* e = malloc(sizeof(AudioEntry));
+    *e = (AudioEntry){ true, 0, size, (uint8_t*) data };
+    return e;
+}
+
+int main(void) {
+    const char theora[] = "\x80theora-header";
+    const char vorbis[] = "\x01vorbis-header";
+
+    {
+        Stream s = {0}, expected = {0};
+        addPage(&s, 111, true, theora, sizeof(theora));
+        uint32_t v1 = addPage(&s, 222, true, vorbis, sizeof(vorbis));
+        addPage(&s, 111, false, "video-1", 7);
+        uint32_t v2 = addPage(&s, 222, false, "audio-1", 7);
+        addPage(&s, 111, false, "video-2", 7);
+        uint32_t v3 = addPage(&s, 222, false, "audio-2", 7);
+        addPage(&s, 111, false, "video-3", 7);
+        uint32_t starts[3] = { v1, v2, v3 };
+        for (int i = 0; i < 3; i++) {
+            uint32_t len = 28 + (starts[i] == v1 ? sizeof(vorbis) : 7);
+            memcpy(expected.bytes + expected.size, s.bytes + starts[i], len);
+            expected.size += len;
+        }
+
+        uint32_t size = 0;
+        uint8_t* kept = oggKeepVorbisOnly(s.bytes, s.size, &size);
+        EXPECT(kept != NULL, "mixed file: demuxer produces a copy");
+        EXPECT(kept != NULL && size == expected.size && memcmp(kept, expected.bytes, size) == 0,
+               "mixed file: output is exactly the Vorbis pages, in order (%u of %u bytes kept)", size, s.size);
+        free(kept);
+    }
+
+    {
+        Stream s = {0};
+        addPage(&s, 222, true, vorbis, sizeof(vorbis));
+        addPage(&s, 111, true, theora, sizeof(theora));
+        addPage(&s, 222, false, "audio-1", 7);
+        uint32_t size = 0;
+        uint8_t* kept = oggKeepVorbisOnly(s.bytes, s.size, &size);
+        EXPECT(kept != NULL && size == 2 * 28 + sizeof(vorbis) + 7, "vorbis-first mixed file: theora page dropped");
+        free(kept);
+    }
+
+    {
+        Stream s = {0};
+        addPage(&s, 222, true, vorbis, sizeof(vorbis));
+        addPage(&s, 222, false, "audio-1", 7);
+        uint32_t size = 0;
+        EXPECT(oggKeepVorbisOnly(s.bytes, s.size, &size) == NULL, "plain vorbis file: left alone");
+    }
+
+    {
+        Stream s = {0};
+        addPage(&s, 111, true, theora, sizeof(theora));
+        addPage(&s, 111, false, "video-1", 7);
+        uint32_t size = 0;
+        EXPECT(oggKeepVorbisOnly(s.bytes, s.size, &size) == NULL, "theora-only file: left alone");
+    }
+
+    {
+        const char junk[] = "RIFF....WAVEfmt this is not ogg";
+        uint32_t size = 0;
+        EXPECT(oggKeepVorbisOnly((const uint8_t*) junk, sizeof(junk), &size) == NULL, "wav/garbage: left alone");
+        EXPECT(oggKeepVorbisOnly((const uint8_t*) junk, 0, &size) == NULL, "empty input: left alone");
+    }
+
+    {
+        Stream s = {0};
+        addPage(&s, 111, true, theora, sizeof(theora));
+        addPage(&s, 222, true, vorbis, sizeof(vorbis));
+        addPage(&s, 222, false, "audio-1", 7);
+        uint32_t cut = s.size - 3;
+        uint32_t size = 0;
+        uint8_t* kept = oggKeepVorbisOnly(s.bytes, cut, &size);
+        EXPECT(kept != NULL && size == 28 + sizeof(vorbis), "truncated file: only complete vorbis pages are kept (%u bytes)", size);
+        free(kept);
+    }
+
+    {
+        Stream mixed = {0}, plain = {0};
+        addPage(&mixed, 111, true, theora, sizeof(theora));
+        addPage(&mixed, 222, true, vorbis, sizeof(vorbis));
+        addPage(&plain, 222, true, vorbis, sizeof(vorbis));
+
+        AudioEntry* a = entryFor(mixed.bytes, mixed.size);
+        uint32_t sizeA1, sizeA2;
+        const uint8_t* first = getDecodableAudio(a, &sizeA1);
+        const uint8_t* second = getDecodableAudio(a, &sizeA2);
+        EXPECT(first != a->data && first == second && sizeA1 == sizeA2 && sizeA1 < mixed.size, "mixed entry: demuxed once, cached");
+
+        AudioEntry* b = entryFor(plain.bytes, plain.size);
+        uint32_t sizeB;
+        EXPECT(getDecodableAudio(b, &sizeB) == b->data && sizeB == plain.size, "plain entry: original bytes returned");
+
+        AudioEntry* none = entryFor(NULL, 0);
+        uint32_t sizeN = 99;
+        EXPECT(getDecodableAudio(none, &sizeN) == NULL && sizeN == 0, "empty entry: nothing returned, no crash");
+    }
+
+    printf(failures == 0 ? "PASS\n" : "FAILED (%d)\n", failures);
+    return failures == 0 ? 0 : 1;
+}

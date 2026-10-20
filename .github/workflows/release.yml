@@ -1,0 +1,36 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build the release files
+        env:
+          VA11_VERSION: ${{ github.ref_name }}
+        run: ./release.sh
+
+      - name: Test them
+        run: |
+          tests/run.sh
+          tests/release_test.sh
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            build/release/va11-hall-a-mac.zip \
+            build/release/va11-hall-a-mac.zip.sha256 \
+            build/release/install.sh \
+            --title "$GITHUB_REF_NAME" --generate-notes

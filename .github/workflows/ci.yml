@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shell syntax
+        run: for f in build.sh install.sh release.sh app/launcher.sh tests/*.sh; do bash -n "$f"; done
+
+      - name: Build the runner for arm64 and x86_64
+        run: ./build.sh --universal --build-only
+
+      - name: Check the slices and their minimum macOS versions
+        run: |
+          lipo -archs build/dist/butterscotch
+          for arch in arm64 x86_64; do
+            lipo build/dist/butterscotch -thin "$arch" -output "build/dist/slice-$arch"
+            echo "$arch: $(otool -l "build/dist/slice-$arch" | grep -A4 LC_BUILD_VERSION | grep minos | tr -s ' ')"
+          done
+          test "$(otool -l build/dist/slice-arm64 | grep -A4 LC_BUILD_VERSION | awk '/minos/ {print $2}')" = "11.0"
+          test "$(otool -l build/dist/slice-x86_64 | grep -A4 LC_BUILD_VERSION | awk '/minos/ {print $2}')" = "10.15"
+
+      - name: Unit tests
+        run: tests/run.sh
+
+      - name: Release archive installs from a clean state
+        run: |
+          ./release.sh
+          tests/release_test.sh

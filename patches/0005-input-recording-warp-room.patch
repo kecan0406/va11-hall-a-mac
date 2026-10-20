@@ -1,0 +1,100 @@
+diff --git a/src/input_recording.c b/src/input_recording.c
+index 26aabf9..8965197 100644
+--- a/src/input_recording.c
++++ b/src/input_recording.c
+@@ -117,6 +117,11 @@ InputRecording* InputRecording_createPlayer(const char* playbackFilePath, const
+             readOptionalIntArray(mouse, "released", &inputFrame.mouseButtonsReleased);
+         }
+ 
++        JsonValue* warp = JsonReader_getJsonValueByKey(val, "warp");
++        if (warp != nullptr && JsonReader_isString(warp)) {
++            inputFrame.warpRoom = safeStrdup(JsonReader_getString(warp));
++        }
++
+         rec->playbackFrames[frameNum] = inputFrame;
+     }
+ 
+@@ -147,6 +152,7 @@ void InputRecording_free(InputRecording* recording) {
+             arrfree(frame.keysReleased);
+             arrfree(frame.mouseButtonsPressed);
+             arrfree(frame.mouseButtonsReleased);
++            free(frame.warpRoom);
+         }
+ 
+         free(recording->playbackFrames);
+@@ -187,6 +193,8 @@ void InputRecording_processFrame(InputRecording* recording, RunnerKeyboardState*
+             }
+             }
+ 
++            recording->pendingWarp = frame.warpRoom;
++
+             if (frame.hasMousePosition) {
+                 recording->hasPlaybackMouse = true;
+                 recording->playbackMouseX = frame.mouseX;
+@@ -344,3 +352,10 @@ bool InputRecording_getPlaybackMousePosition(InputRecording* recording, double*
+     *outY = recording->playbackMouseY;
+     return true;
+ }
++
++const char* InputRecording_takePlaybackWarp(InputRecording* recording) {
++    if (recording == nullptr) return nullptr;
++    const char* warp = recording->pendingWarp;
++    recording->pendingWarp = nullptr;
++    return warp;
++}
+diff --git a/src/input_recording.h b/src/input_recording.h
+index 94247ec..813b1d3 100644
+--- a/src/input_recording.h
++++ b/src/input_recording.h
+@@ -16,6 +16,8 @@ typedef struct InputFrame {
+ 
+     bool hasMousePosition;
+     double mouseX, mouseY;
++
++    char* warpRoom;
+ } InputFrame;
+ 
+ typedef struct InputRecording {
+@@ -35,6 +37,7 @@ typedef struct InputRecording {
+     bool playbackEnded;
+     bool hasPlaybackMouse;
+     double playbackMouseX, playbackMouseY;
++    const char* pendingWarp;
+ } InputRecording;
+ 
+ // Create a recorder that snapshots keyboard state each frame
+@@ -50,6 +53,8 @@ void InputRecording_free(InputRecording* recording);
+ // Called each frame: plays back recorded input (if active), then snapshots keyboard state (if recording)
+ void InputRecording_processFrame(InputRecording* recording, RunnerKeyboardState* kb, RunnerMouseState* mouse, int frameNumber);
+ 
++const char* InputRecording_takePlaybackWarp(InputRecording* recording);
++
+ bool InputRecording_getPlaybackMousePosition(InputRecording* recording, double* outX, double* outY);
+ 
+ // Write recorded frames to the JSON file (returns true on success)
+diff --git a/src/loop.c b/src/loop.c
+index 509e564..97dc6a0 100644
+--- a/src/loop.c
++++ b/src/loop.c
+@@ -1113,6 +1113,21 @@ int loop(CommandLineArgs args, const char *argv0) {
+                 if (InputRecording_getPlaybackMousePosition(globalInputRecording, &playbackMouseX, &playbackMouseY)) {
+                     Runner_setMousePositionInSurface(runner, playbackMouseX, playbackMouseY);
+                 }
++
++                const char* warpRoom = InputRecording_takePlaybackWarp(globalInputRecording);
++                if (warpRoom != nullptr) {
++                    int32_t warpIndex = -1;
++                    repeat(runner->dataWin->room.count, i) {
++                        if (runner->dataWin->room.rooms[i].present && strcmp(runner->dataWin->room.rooms[i].name, warpRoom) == 0) {
++                            warpIndex = (int32_t) i;
++                        }
++                    }
++                    if (warpIndex >= 0) {
++                        runner->pendingRoom = warpIndex;
++                    } else {
++                        logWarn("InputRecording: can't warp to unknown room '%s'\n", warpRoom);
++                    }
++                }
+             }
+ 
+             // Go to next room

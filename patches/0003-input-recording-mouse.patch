@@ -1,0 +1,292 @@
+diff --git a/src/input_recording.c b/src/input_recording.c
+index 61bd631..26aabf9 100644
+--- a/src/input_recording.c
++++ b/src/input_recording.c
+@@ -10,6 +10,15 @@
+ 
+ #include "stb_ds.h"
+ 
++static void readOptionalIntArray(const JsonValue* object, const char* key, int32_t** out) {
++    JsonValue* array = JsonReader_getJsonValueByKey(object, key);
++    if (array == nullptr || !JsonReader_isArray(array)) return;
++
++    repeat(JsonReader_arrayLength(array), i) {
++        arrput(*out, (int32_t) JsonReader_getInt(JsonReader_getArrayElement(array, i)));
++    }
++}
++
+ InputRecording* InputRecording_createRecorder(const char* filePath) {
+     InputRecording* rec = (InputRecording *)safeCalloc(1, sizeof(InputRecording));
+     rec->isRecording = true;
+@@ -94,6 +103,20 @@ InputRecording* InputRecording_createPlayer(const char* playbackFilePath, const
+         InputFrame inputFrame = {0};
+         inputFrame.keysPressed = keysPressedArray;
+         inputFrame.keysReleased = keysReleasedArray;
++
++        JsonValue* mouse = JsonReader_getJsonValueByKey(val, "mouse");
++        if (mouse != nullptr && JsonReader_isObject(mouse)) {
++            JsonValue* x = JsonReader_getJsonValueByKey(mouse, "x");
++            JsonValue* y = JsonReader_getJsonValueByKey(mouse, "y");
++            if (x != nullptr && y != nullptr) {
++                inputFrame.hasMousePosition = true;
++                inputFrame.mouseX = JsonReader_getDouble(x);
++                inputFrame.mouseY = JsonReader_getDouble(y);
++            }
++            readOptionalIntArray(mouse, "pressed", &inputFrame.mouseButtonsPressed);
++            readOptionalIntArray(mouse, "released", &inputFrame.mouseButtonsReleased);
++        }
++
+         rec->playbackFrames[frameNum] = inputFrame;
+     }
+ 
+@@ -110,6 +133,8 @@ void InputRecording_free(InputRecording* recording) {
+             InputFrame frame = recording->recordedFrames[i];
+             arrfree(frame.keysPressed);
+             arrfree(frame.keysReleased);
++            arrfree(frame.mouseButtonsPressed);
++            arrfree(frame.mouseButtonsReleased);
+         }
+ 
+         arrfree(recording->recordedFrames);
+@@ -120,6 +145,8 @@ void InputRecording_free(InputRecording* recording) {
+             InputFrame frame = recording->playbackFrames[i];
+             arrfree(frame.keysPressed);
+             arrfree(frame.keysReleased);
++            arrfree(frame.mouseButtonsPressed);
++            arrfree(frame.mouseButtonsReleased);
+         }
+ 
+         free(recording->playbackFrames);
+@@ -128,7 +155,7 @@ void InputRecording_free(InputRecording* recording) {
+     free(recording);
+ }
+ 
+-void InputRecording_processFrame(InputRecording* recording, RunnerKeyboardState* kb, int frameNumber) {
++void InputRecording_processFrame(InputRecording* recording, RunnerKeyboardState* kb, RunnerMouseState* mouse, int frameNumber) {
+     if (recording == nullptr) return;
+ 
+     // Playback: send the pressed keys from the recorded data
+@@ -147,6 +174,24 @@ void InputRecording_processFrame(InputRecording* recording, RunnerKeyboardState*
+                 RunnerKeyboard_onKeyUp(kb, frame.keysReleased[i]);
+             }
+             }
++
++            {
++            repeat(arrlen(frame.mouseButtonsPressed), i) {
++                RunnerMouse_onButtonDown(mouse, frame.mouseButtonsPressed[i]);
++            }
++            }
++
++            {
++            repeat(arrlen(frame.mouseButtonsReleased), i) {
++                RunnerMouse_onButtonUp(mouse, frame.mouseButtonsReleased[i]);
++            }
++            }
++
++            if (frame.hasMousePosition) {
++                recording->hasPlaybackMouse = true;
++                recording->playbackMouseX = frame.mouseX;
++                recording->playbackMouseY = frame.mouseY;
++            }
+         } else {
+             if (!recording->playbackEnded) {
+                 logInfo("InputRecording: Playback ended at frame %d (recorded %d frames)\n", frameNumber, recording->playbackFrameCount);
+@@ -159,6 +204,7 @@ void InputRecording_processFrame(InputRecording* recording, RunnerKeyboardState*
+     if (recording->isRecording) {
+         int32_t* keysPressed = nullptr;
+         int32_t* keysReleased = nullptr;
++        double mouseX, mouseY;
+ 
+         repeat(GML_KEY_COUNT, key) {
+             if (recording->filterDebugKeys && (key == 'P' || key == 'O')) continue;
+@@ -174,6 +220,27 @@ void InputRecording_processFrame(InputRecording* recording, RunnerKeyboardState*
+         inputFrame.keysPressed = keysPressed;
+         inputFrame.keysReleased = keysReleased;
+ 
++        {
++        repeat(GML_MOUSE_BUTTON_COUNT, button) {
++            if (mouse->buttonPressed[button]) arrput(inputFrame.mouseButtonsPressed, (int32_t) button + 1);
++            if (mouse->buttonReleased[button]) arrput(inputFrame.mouseButtonsReleased, (int32_t) button + 1);
++        }
++        }
++
++        bool playingMouse = InputRecording_getPlaybackMousePosition(recording, &mouseX, &mouseY);
++        if (!playingMouse) {
++            mouseX = mouse->screenX;
++            mouseY = mouse->screenY;
++        }
++        if (!recording->hasLastRecordedMouse || mouseX != recording->lastRecordedMouseX || mouseY != recording->lastRecordedMouseY) {
++            inputFrame.hasMousePosition = true;
++            inputFrame.mouseX = mouseX;
++            inputFrame.mouseY = mouseY;
++            recording->hasLastRecordedMouse = true;
++            recording->lastRecordedMouseX = mouseX;
++            recording->lastRecordedMouseY = mouseY;
++        }
++
+         arrput(recording->recordedFrames, inputFrame);
+     }
+ }
+@@ -215,6 +282,36 @@ bool InputRecording_save(InputRecording* recording) {
+ 
+         JsonWriter_endArray(&w);
+ 
++        if (frame.hasMousePosition || arrlen(frame.mouseButtonsPressed) > 0 || arrlen(frame.mouseButtonsReleased) > 0) {
++            JsonWriter_key(&w, "mouse");
++            JsonWriter_beginObject(&w);
++
++            if (frame.hasMousePosition) {
++                JsonWriter_propertyDouble(&w, "x", frame.mouseX);
++                JsonWriter_propertyDouble(&w, "y", frame.mouseY);
++            }
++
++            JsonWriter_key(&w, "pressed");
++            JsonWriter_beginArray(&w);
++            {
++            repeat(arrlen(frame.mouseButtonsPressed), i) {
++                JsonWriter_int(&w, frame.mouseButtonsPressed[i]);
++            }
++            }
++            JsonWriter_endArray(&w);
++
++            JsonWriter_key(&w, "released");
++            JsonWriter_beginArray(&w);
++            {
++            repeat(arrlen(frame.mouseButtonsReleased), i) {
++                JsonWriter_int(&w, frame.mouseButtonsReleased[i]);
++            }
++            }
++            JsonWriter_endArray(&w);
++
++            JsonWriter_endObject(&w);
++        }
++
+         JsonWriter_endObject(&w);
+     }
+ 
+@@ -240,3 +337,10 @@ bool InputRecording_save(InputRecording* recording) {
+ bool InputRecording_isPlaybackActive(InputRecording* recording) {
+     return recording != nullptr && recording->isPlayback && !recording->playbackEnded;
+ }
++
++bool InputRecording_getPlaybackMousePosition(InputRecording* recording, double* outX, double* outY) {
++    if (!InputRecording_isPlaybackActive(recording) || !recording->hasPlaybackMouse) return false;
++    *outX = recording->playbackMouseX;
++    *outY = recording->playbackMouseY;
++    return true;
++}
+diff --git a/src/input_recording.h b/src/input_recording.h
+index 8216319..94247ec 100644
+--- a/src/input_recording.h
++++ b/src/input_recording.h
+@@ -5,10 +5,17 @@
+ #include <stdint.h>
+ 
+ #include "runner_keyboard.h"
++#include "runner_mouse.h"
+ 
+ typedef struct InputFrame {
+     int32_t* keysPressed;
+     int32_t* keysReleased;
++
++    int32_t* mouseButtonsPressed;
++    int32_t* mouseButtonsReleased;
++
++    bool hasMousePosition;
++    double mouseX, mouseY;
+ } InputFrame;
+ 
+ typedef struct InputRecording {
+@@ -19,11 +26,15 @@ typedef struct InputRecording {
+ 
+     // Recording: stb_ds array of stb_ds InputFrame arrays (one per frame)
+     InputFrame* recordedFrames;
++    bool hasLastRecordedMouse;
++    double lastRecordedMouseX, lastRecordedMouseY;
+ 
+     // Playback: same structure, loaded from JSON
+     InputFrame* playbackFrames;
+     int32_t playbackFrameCount;
+     bool playbackEnded;
++    bool hasPlaybackMouse;
++    double playbackMouseX, playbackMouseY;
+ } InputRecording;
+ 
+ // Create a recorder that snapshots keyboard state each frame
+@@ -37,7 +48,9 @@ InputRecording* InputRecording_createPlayer(const char* playbackFilePath, const
+ void InputRecording_free(InputRecording* recording);
+ 
+ // Called each frame: plays back recorded input (if active), then snapshots keyboard state (if recording)
+-void InputRecording_processFrame(InputRecording* recording, RunnerKeyboardState* kb, int frameNumber);
++void InputRecording_processFrame(InputRecording* recording, RunnerKeyboardState* kb, RunnerMouseState* mouse, int frameNumber);
++
++bool InputRecording_getPlaybackMousePosition(InputRecording* recording, double* outX, double* outY);
+ 
+ // Write recorded frames to the JSON file (returns true on success)
+ bool InputRecording_save(InputRecording* recording);
+diff --git a/src/loop.c b/src/loop.c
+index 2059c2a..509e564 100644
+--- a/src/loop.c
++++ b/src/loop.c
+@@ -1107,7 +1107,12 @@ int loop(CommandLineArgs args, const char *argv0) {
+                 }
+ 
+                 // Process input recording/playback (must happen after platformHandleEvents, before Runner_step)
+-                InputRecording_processFrame(globalInputRecording, runner->keyboard, inputFrameCount++);
++                InputRecording_processFrame(globalInputRecording, runner->keyboard, runner->mouse, inputFrameCount++);
++
++                double playbackMouseX, playbackMouseY;
++                if (InputRecording_getPlaybackMousePosition(globalInputRecording, &playbackMouseX, &playbackMouseY)) {
++                    Runner_setMousePositionInSurface(runner, playbackMouseX, playbackMouseY);
++                }
+             }
+ 
+             // Go to next room
+@@ -1345,9 +1350,12 @@ int loop(CommandLineArgs args, const char *argv0) {
+ 
+                 Runner_beginFrame(runner, gameW, gameH, winW, winH, fbWidth, fbHeight);
+ 
+-                double mx, my;
+-                platformGetMousePos(&mx, &my);
+-                Runner_updateMousePosition(runner, winW, winH, mx, my);
++                double playbackMouseX, playbackMouseY;
++                if (!InputRecording_getPlaybackMousePosition(globalInputRecording, &playbackMouseX, &playbackMouseY)) {
++                    double mx, my;
++                    platformGetMousePos(&mx, &my);
++                    Runner_updateMousePosition(runner, winW, winH, mx, my);
++                }
+ 
+                 Runner_drawViews(runner, gameW, gameH, debugShowCollisionMasks);
+                 renderer->vtable->endFrameInit(renderer);
+diff --git a/src/runner.c b/src/runner.c
+index 6e0c4b6..cf7816e 100644
+--- a/src/runner.c
++++ b/src/runner.c
+@@ -3396,6 +3396,15 @@ void Runner_updateMousePosition(Runner* runner, int32_t windowWidth, int32_t win
+     double fboX = ((mouseXInWindow - runner->viewportX) / runner->viewportW) * gameW;
+     double fboY = ((mouseYInWindow - runner->viewportY) / runner->viewportH) * gameH;
+ 
++    Runner_setMousePositionInSurface(runner, fboX, fboY);
++}
++
++void Runner_setMousePositionInSurface(Runner* runner, double fboX, double fboY) {
++    if (runner->currentRoom == nullptr) return;
++
++    uint32_t gameW = runner->renderGameW > 0 ? runner->renderGameW : runner->currentRoom->width;
++    uint32_t gameH = runner->renderGameH > 0 ? runner->renderGameH : runner->currentRoom->height;
++
+     runner->mouse->screenX = fboX;
+     runner->mouse->screenY = fboY;
+ 
+diff --git a/src/runner.h b/src/runner.h
+index 2e128c4..60270be 100644
+--- a/src/runner.h
++++ b/src/runner.h
+@@ -944,6 +944,7 @@ void Runner_drawPost(Runner* runner, int32_t windowW, int32_t windowH);
+ void Runner_computeViewDisplayScale(Runner* runner, int32_t gameW, int32_t gameH, float* outScaleX, float* outScaleY);
+ void Runner_drawViews(Runner* runner, int32_t gameW, int32_t gameH, bool debugShowCollisionMasks);
+ void Runner_updateMousePosition(Runner* runner, int32_t windowWidth, int32_t windowHeight, double mouseXInWindow, double mouseYInWindow);
++void Runner_setMousePositionInSurface(Runner* runner, double fboX, double fboY);
+ // Converts the cached screen-space cursor (RunnerMouseState.screenX/screenY) to room/world coordinates using the LIVE camera/view state.
+ void Runner_getMouseRoomPosition(Runner* runner, GMLReal* outX, GMLReal* outY);
+ // Resolves a camera id (slot index) to its pool entry, or nullptr if out of range / not allocated.

@@ -1,0 +1,95 @@
+diff --git a/src/backends/appkit.m b/src/backends/appkit.m
+index e8b76cc..d7e9bb7 100644
+--- a/src/backends/appkit.m
++++ b/src/backends/appkit.m
+@@ -380,6 +380,26 @@ static void platformSetWindowPosition(int32_t x, int32_t y) {
+     [window setFrameOrigin:newOrigin];
+ }
+ 
++static bool fullscreenState = false;
++
++static bool platformGetFullscreen(void) {
++    return fullscreenState;
++}
++
++static void platformSetFullscreen(bool enable) {
++    if (enable == fullscreenState) return;
++    fullscreenState = enable;
++    [window toggleFullScreen:nil];
++}
++
++static void appkitObserveFullscreen(void) {
++    NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
++    [center addObserverForName:NSWindowWillEnterFullScreenNotification object:window queue:nil
++                    usingBlock:^(NSNotification *note) { fullscreenState = true; }];
++    [center addObserverForName:NSWindowWillExitFullScreenNotification object:window queue:nil
++                    usingBlock:^(NSNotification *note) { fullscreenState = false; }];
++}
++
+ void platformGetMousePos(double *xPos, double *yPos) {
+     NSPoint mouseLocation = appkitWindowPointToViewPixels(glView, [window mouseLocationOutsideOfEventStream]);
+     *xPos = mouseLocation.x;
+@@ -590,6 +610,8 @@ bool platformInit(int32_t reqW, int32_t reqH, const char *title, bool headless)
+ 
+     [window setTitle:[NSString stringWithFormat:@"%s", title]];
+     [window setAcceptsMouseMovedEvents:YES];
++    [window setCollectionBehavior:[window collectionBehavior] | NSWindowCollectionBehaviorFullScreenPrimary];
++    appkitObserveFullscreen();
+ 
+     // Create OpenGL view
+     glView =
+@@ -692,6 +714,8 @@ void platformInitFunctions(Runner *runner) {
+     g_runner = runner;
+     runner->windowHasFocus = windowIsFocused;
+     runner->setCursor = platformSetCursor;
++    runner->getFullscreen = platformGetFullscreen;
++    runner->setFullscreen = platformSetFullscreen;
+     runner->getWindowPosition = platformGetWindowPosition;
+     runner->setWindowPosition = platformSetWindowPosition;
+     runner->currentCursor = GML_CR_ARROW;
+diff --git a/src/runner.h b/src/runner.h
+index 60270be..b08bcde 100644
+--- a/src/runner.h
++++ b/src/runner.h
+@@ -755,6 +755,8 @@ struct Runner {
+     bool (*getWindowPosition)(int32_t* outX, int32_t* outY);
+     void (*setWindowPosition)(int32_t x, int32_t y);
+     bool (*windowHasFocus)(void);
++    bool (*getFullscreen)(void);
++    void (*setFullscreen)(bool enable);
+     void (*setCursor)(int32_t cursorType);
+     int32_t currentCursor;  // last value passed to window_set_cursor
+     int32_t cursorSprite;   // storages BUILTIN_VAR_CURSOR_SPRITE. Independent of currentCursor/setCursor
+diff --git a/src/vm_builtins.c b/src/vm_builtins.c
+index 48a7ea6..488d09a 100644
+--- a/src/vm_builtins.c
++++ b/src/vm_builtins.c
+@@ -9656,8 +9656,26 @@ static RValue builtin_joystick_axes(VMContext* ctx, RValue* args, MAYBE_UNUSED i
+ }
+ 
+ // Window stubs
+-STUB_RETURN_ZERO(window_get_fullscreen)
+-STUB_RETURN_UNDEFINED(window_set_fullscreen)
++static RValue builtin_window_get_fullscreen(VMContext* ctx, MAYBE_UNUSED RValue* args, MAYBE_UNUSED int32_t argCount) {
++    Runner* runner = ctx->runner;
++    if (runner != nullptr && runner->getFullscreen != nullptr) {
++        return RValue_makeBool(runner->getFullscreen());
++    }
++    logStubbedFunction(ctx, "window_get_fullscreen");
++    return RValue_makeReal(0.0);
++}
++
++static RValue builtin_window_set_fullscreen(VMContext* ctx, RValue* args, MAYBE_UNUSED int32_t argCount) {
++    REQUIRE_ARGC_AT_LEAST("window_set_fullscreen", 1, RValue_makeUndefined());
++
++    Runner* runner = ctx->runner;
++    if (runner != nullptr && runner->setFullscreen != nullptr) {
++        runner->setFullscreen(RValue_toBool(args[0]));
++        return RValue_makeUndefined();
++    }
++    logStubbedFunction(ctx, "window_set_fullscreen");
++    return RValue_makeUndefined();
++}
+ 
+ static RValue builtin_window_get_width(VMContext* ctx, MAYBE_UNUSED RValue* args, MAYBE_UNUSED int32_t argCount) {
+     Runner* runner = ctx->runner;

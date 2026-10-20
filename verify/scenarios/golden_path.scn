@@ -1,0 +1,30 @@
+@exit 8600
+@shot 990 title_menu
+@shot 1020 title_notice
+@shot 1500 prologue_bar
+@shot 2400 chapter_card
+@shot 5900 jill_room
+@shot 8500 first_shift
+@rooms rSetup splashscreen1 splashscreen2 splashscreen3 title_screen bar week1_intro jill_room towork_load bar
+
+60 move 640 336
+65 click left
+
+70 move 640 400
+300..990/45 click left
+
+1000 move 371 576
+1006 click left
+1030 move 640 400
+1034 click left
+
+1100 move 448 576
+1110..5990/40 click left
+
+6000 move 896 544
+6010..6990/40 click left
+7000 move 832 90
+7010 click left
+
+7200 move 448 600
+7210..8590/40 click left

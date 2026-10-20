@@ -1,0 +1,40 @@
+diff --git a/src/backends/appkit.m b/src/backends/appkit.m
+index ee1e9b4..e8b76cc 100644
+--- a/src/backends/appkit.m
++++ b/src/backends/appkit.m
+@@ -7,6 +7,7 @@
+ #include <dlfcn.h>
+ 
+ #include "common.h"
++#include "appkit_mouse.h"
+ #include "input_recording.h"
+ #include "platformdefs.h"
+ #include "gettime.h"
+@@ -380,7 +381,7 @@ static void platformSetWindowPosition(int32_t x, int32_t y) {
+ }
+ 
+ void platformGetMousePos(double *xPos, double *yPos) {
+-    NSPoint mouseLocation = [window mouseLocationOutsideOfEventStream];
++    NSPoint mouseLocation = appkitWindowPointToViewPixels(glView, [window mouseLocationOutsideOfEventStream]);
+     *xPos = mouseLocation.x;
+     *yPos = mouseLocation.y;
+ }
+diff --git a/src/backends/appkit_mouse.h b/src/backends/appkit_mouse.h
+new file mode 100644
+index 0000000..cab5f7d
+--- /dev/null
++++ b/src/backends/appkit_mouse.h
+@@ -0,0 +1,13 @@
++#ifndef _BS_APPKIT_MOUSE_H_
++#define _BS_APPKIT_MOUSE_H_
++
++#import <AppKit/AppKit.h>
++
++static inline NSPoint appkitWindowPointToViewPixels(NSView* view, NSPoint windowPoint) {
++    NSPoint pixels = [view convertPointToBacking:[view convertPoint:windowPoint fromView:nil]];
++    NSRect backingBounds = [view convertRectToBacking:[view bounds]];
++    pixels.y = backingBounds.size.height - pixels.y;
++    return pixels;
++}
++
++#endif

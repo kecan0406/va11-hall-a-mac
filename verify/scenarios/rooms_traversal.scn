@@ -1,0 +1,5 @@
+@debug
+@exit 3000
+@rooms-visit rSetup splashscreen1 splashscreen2 splashscreen3 intro1 intro2 intro3 title_screen jill_room bar break_time anna_scene badend_room curryend_room concertend_room almaend_room doroend_room goodend_room towork_load results_room endings_room shop sunday1 sunday2 week1_intro week2_intro week3_intro credits_room codec_room
+
+60..2790/90 key pageup

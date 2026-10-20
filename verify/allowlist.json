@@ -1,0 +1,28 @@
+{
+  "functions": {
+    "steam_get_achievement": {
+      "player_visible": true,
+      "note": "Steam achievements need Steamworks and a launch through Steam. The call returns undefined and the game carries on; achievements are not recorded."
+    },
+    "steam_set_achievement": {
+      "player_visible": true,
+      "note": "Same as steam_get_achievement."
+    },
+    "steam_send_screenshot": {
+      "player_visible": true,
+      "note": "Part of the F12 screenshot key (screenshot_take). Nothing is uploaded to Steam."
+    },
+    "screen_save": {
+      "player_visible": true,
+      "note": "Part of the F12 screenshot key (screenshot_take). Pressing F12 doesn't write a screenshot file."
+    },
+    "FS_set_gm_save_area": {
+      "player_visible": false,
+      "note": "Called once at startup by the bundled FS file-system extension to choose save folders. The runner has its own save area (the data folder), so nothing is lost."
+    },
+    "FS_set_working_directory": {
+      "player_visible": false,
+      "note": "Same as FS_set_gm_save_area."
+    }
+  }
+}

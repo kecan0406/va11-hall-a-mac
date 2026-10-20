@@ -1,0 +1,5 @@
+@roundtrip
+@exit 200
+
+60 move 640 336
+65 click left

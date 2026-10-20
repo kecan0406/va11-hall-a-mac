@@ -1,0 +1,128 @@
+diff --git a/src/audio/miniaudio/ma_audio_system.c b/src/audio/miniaudio/ma_audio_system.c
+index 08581f6..8c54760 100644
+--- a/src/audio/miniaudio/ma_audio_system.c
++++ b/src/audio/miniaudio/ma_audio_system.c
+@@ -42,6 +42,86 @@
+ #include "string_compat.h"
+ #include "stb_ds.h"
+ 
++typedef struct {
++    const AudioEntry* entry;
++    uint8_t* data;
++    uint32_t size;
++} DemuxedAudio;
++
++static DemuxedAudio* demuxedAudioCache = nullptr;
++
++static bool oggReadPage(const uint8_t* data, uint32_t size, uint32_t pos, uint32_t* pageSize, uint32_t* serial, bool* isVorbisStart) {
++    if (pos + 27 > size || memcmp(data + pos, "OggS", 4) != 0) return false;
++
++    uint32_t segmentCount = data[pos + 26];
++    if (pos + 27 + segmentCount > size) return false;
++
++    uint32_t bodySize = 0;
++    repeat(segmentCount, i) bodySize += data[pos + 27 + i];
++
++    *pageSize = 27 + segmentCount + bodySize;
++    if (pos + *pageSize > size) return false;
++
++    memcpy(serial, data + pos + 14, sizeof(*serial));
++    bool isFirstPage = (data[pos + 5] & 0x02) != 0;
++    *isVorbisStart = isFirstPage && bodySize >= 7 && memcmp(data + pos + 27 + segmentCount, "\x01vorbis", 7) == 0;
++    return true;
++}
++
++static uint8_t* oggKeepVorbisOnly(const uint8_t* data, uint32_t size, uint32_t* outSize) {
++    uint32_t pos = 0, pageSize, serial;
++    bool isVorbisStart;
++
++    uint32_t vorbisSerial = 0;
++    bool foundVorbis = false;
++    while (!foundVorbis && oggReadPage(data, size, pos, &pageSize, &serial, &isVorbisStart)) {
++        if (isVorbisStart) {
++            vorbisSerial = serial;
++            foundVorbis = true;
++        }
++        pos += pageSize;
++    }
++    if (!foundVorbis) return nullptr;
++
++    uint32_t keptSize = 0;
++    for (pos = 0; oggReadPage(data, size, pos, &pageSize, &serial, &isVorbisStart); pos += pageSize) {
++        if (serial == vorbisSerial) keptSize += pageSize;
++    }
++    if (keptSize == 0 || keptSize == size) return nullptr;
++
++    uint8_t* kept = (uint8_t*) safeMalloc(keptSize);
++    uint32_t writePos = 0;
++    for (pos = 0; oggReadPage(data, size, pos, &pageSize, &serial, &isVorbisStart); pos += pageSize) {
++        if (serial != vorbisSerial) continue;
++        memcpy(kept + writePos, data + pos, pageSize);
++        writePos += pageSize;
++    }
++
++    *outSize = keptSize;
++    return kept;
++}
++
++static const uint8_t* getDecodableAudio(const AudioEntry* entry, uint32_t* size) {
++    *size = entry->dataSize;
++    if (entry->data == nullptr) return nullptr;
++
++    repeat(arrlen(demuxedAudioCache), i) {
++        DemuxedAudio* cached = &demuxedAudioCache[i];
++        if (cached->entry != entry) continue;
++        if (cached->data == nullptr) return entry->data;
++        *size = cached->size;
++        return cached->data;
++    }
++
++    DemuxedAudio cached = { entry, nullptr, 0 };
++    cached.data = oggKeepVorbisOnly(entry->data, entry->dataSize, &cached.size);
++    arrput(demuxedAudioCache, cached);
++    if (cached.data == nullptr) return entry->data;
++
++    *size = cached.size;
++    return cached.data;
++}
++
+ // ===[ Helpers ]===
+ 
+ static SoundInstance* findFreeSlot(MaAudioSystem* ma) {
+@@ -175,6 +255,12 @@ static void maDestroy(AudioSystem* audio) {
+         }
+     }
+ 
++    repeat(arrlen(demuxedAudioCache), i) {
++        free(demuxedAudioCache[i].data);
++    }
++    arrfree(demuxedAudioCache);
++    demuxedAudioCache = nullptr;
++
+     // Free loaded audio groups. The main data.win is owned by the caller, so skip index 0.
+     if (arrlen(ma->base.audioGroups) > 1) {
+         for (int32_t i = 1; i < (int32_t) arrlen(ma->base.audioGroups); i++) {
+@@ -284,8 +370,10 @@ static int32_t maPlaySound(AudioSystem* audio, int32_t soundIndex, int32_t prior
+             DataWin_loadAudoIfNeeded(audioGroup, (uint32_t)sound->audioFile);
+             AudioEntry* entry = &audioGroup->audo.entries[sound->audioFile];
+ 
++            uint32_t audioSize;
++            const uint8_t* audioData = getDecodableAudio(entry, &audioSize);
+             ma_decoder_config decoderConfig = ma_decoder_config_init_default();
+-            result = ma_decoder_init_memory(entry->data, entry->dataSize, &decoderConfig, &slot->decoder);
++            result = ma_decoder_init_memory(audioData, audioSize, &decoderConfig, &slot->decoder);
+             if (result != MA_SUCCESS) {
+                 logWarn("Audio: Failed to init decoder for '%s' (error %d)\n", sound->name, result);
+                 return -1;
+@@ -803,8 +891,10 @@ static float maGetSoundLength(AudioSystem* audio, int32_t soundOrInstance) {
+         DataWin* audioGroup = ma->base.audioGroups[sound->audioGroup];
+         DataWin_loadAudoIfNeeded(audioGroup, (uint32_t)sound->audioFile);
+         AudioEntry* entry = &audioGroup->audo.entries[sound->audioFile];
++        uint32_t audioSize;
++        const uint8_t* audioData = getDecodableAudio(entry, &audioSize);
+         ma_decoder_config decoderConfig = ma_decoder_config_init_default();
+-        decResult = ma_decoder_init_memory(entry->data, entry->dataSize, &decoderConfig, &decoder);
++        decResult = ma_decoder_init_memory(audioData, audioSize, &decoderConfig, &decoder);
+     } else {
+         char* path = resolveExternalPath(ma, sound);
+         if (path == nullptr) return 0.0f;
