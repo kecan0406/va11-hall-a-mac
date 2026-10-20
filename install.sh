@@ -45,6 +45,8 @@ With no options it installs (or updates) the app and connects Steam's Play butto
 For developers:
   --runner FILE            use this runner binary instead of downloading the release (build.sh does this)
   --release-url URL        download the release files from URL instead of GitHub
+
+Building and testing from source: docs/DEVELOPERS.md
 EOF
 }
 
@@ -296,7 +298,7 @@ steam_unhook() {
 
 choose_pack_file() {
   osascript -e 'POSIX path of (choose file with prompt "Choose the translation file you downloaded (.zip, .rar or .7z)")' 2>/dev/null ||
-    fail "No file was chosen."
+    fail "No file was chosen." "To pick the file in the terminal instead: install.sh --pack FILE"
 }
 
 install_pack() {
@@ -357,7 +359,9 @@ do_doctor() {
   game="${STEAM_RESOURCES:-$(find_steam_resources || true)}"
   echo "macOS:         $(sw_vers -productVersion) ($(uname -m))"
   echo "Steam folder:  $HOME/Library/Application Support/Steam $([ -d "$HOME/Library/Application Support/Steam" ] && echo '(found)' || echo '(not found)')"
-  echo "Libraries:     $(steam_library_paths | tr '\n' ' ')"
+  local libs
+  libs="$(steam_library_paths | tr '\n' ' ')"
+  echo "Libraries:     ${libs:-none}"
   echo "Game:          ${game:-NOT FOUND}"
   if [ -n "$game" ]; then
     runner="$(dirname "$game")/MacOS/Mac_Runner"
