@@ -44,7 +44,7 @@ check "macOS too old for Apple Silicon: stops with a clear message" '
   out="$(VA11_MACOS_VERSION=10.15 VA11_ARCH=arm64 install 2>&1)"; rc=$?
   [ $rc -ne 0 ] && echo "$out" | grep -q "too old" && echo "$out" | grep -q "macOS 11" && [ ! -e "$APP" ]'
 check "macOS 10.14 on Intel: stops with a clear message" '! VA11_MACOS_VERSION=10.14.6 VA11_ARCH=x86_64 install >/dev/null 2>&1 && [ ! -e "$APP" ]'
-check "macOS 10.15 on Intel is accepted" 'VA11_MACOS_VERSION=10.15.7 VA11_ARCH=x86_64 install --no-steam-hook >/dev/null 2>&1 && [ -d "$APP" ]'
+check "macOS 10.15 on Intel is accepted" 'VA11_MACOS_VERSION=10.15.7 VA11_ARCH=x86_64 install >/dev/null 2>&1 && [ -d "$APP" ]'
 rm -rf "$APP"
 check "game not installed: tells the user what to do" '
   out="$(HOME="$WORK/empty-home" VA11_STEAM_RESOURCES= install 2>&1)"; rc=$?
@@ -62,6 +62,8 @@ check "install: the app starts the runner with the game file" '
 check "install: Steam's Mac_Runner is now the hook, the original is kept" 'hooked && [ -x "$RUNNER" ] && [ "$(cat "$RUNNER.original")" = "original runner v1" ]'
 check "install: nothing else in the Steam folder changed" '
   [ "$(steam_listing_without_runner)" = "$BEFORE_WITHOUT_RUNNER" ] && [ "$(ls "$BUNDLE/MacOS" | tr "\n" " ")" = "Mac_Runner Mac_Runner.original " ]'
+check "install: the translation app is created for drag & drop installs" '
+  DROPLET="$APP_DIR/VA-11 Hall-A Install Translation.app"; exe="$(plutil -extract CFBundleExecutable raw "$DROPLET/Contents/Info.plist" 2>/dev/null)"; [ -n "$exe" ] && [ -x "$DROPLET/Contents/MacOS/$exe" ]'
 
 echo "== Play button"
 bash -c 'echo $$ > "$0.pid"; exec "$0" --from-steam "two words"' "$RUNNER"
@@ -85,19 +87,13 @@ check "app missing when Play is pressed: exits with an error" '! "$RUNNER" >/dev
 mv "$WORK/launcher.gone" "$APP/Contents/MacOS/VA-11 Hall-A"
 
 echo "== undo"
-"$INSTALL" --steam-unhook >/dev/null 2>&1
-check "steam-unhook: Steam's file is back, nothing left behind" '[ "$(cat "$RUNNER")" = "original runner v2" ] && [ ! -e "$RUNNER.original" ] && [ -d "$APP" ]'
-check "steam-unhook when not connected: succeeds and changes nothing" 'b="$(steam_listing)"; "$INSTALL" --steam-unhook >/dev/null 2>&1 && [ "$(steam_listing)" = "$b" ]'
-install --no-steam-hook >/dev/null 2>&1
-check "no-steam-hook: the app is installed and Steam is not touched" '! hooked && [ "$(cat "$RUNNER")" = "original runner v2" ] && [ ! -e "$RUNNER.original" ]'
-install >/dev/null 2>&1
-rm "$RUNNER.original"
-check "steam-unhook without a backup: fails and keeps the connection" '! "$INSTALL" --steam-unhook >/dev/null 2>&1 && hooked'
-printf 'original runner v3\n' > "$WORK/saved"
-cp "$WORK/saved" "$RUNNER.original"
 "$INSTALL" --uninstall >/dev/null 2>&1
 check "uninstall: removes the app, restores Steam's file, keeps the saves" '
-  [ ! -e "$APP" ] && [ "$(cat "$RUNNER")" = "original runner v3" ] && [ "$(cat "$DATA/saves/slot1.txt")" = progress ]'
+  [ ! -e "$APP" ] && [ "$(cat "$RUNNER")" = "original runner v2" ] && [ ! -e "$RUNNER.original" ] && [ "$(cat "$DATA/saves/slot1.txt")" = progress ]'
+check "uninstall: the translation app is gone too" '
+  [ ! -e "$APP_DIR/VA-11 Hall-A Install Translation.app" ]'
+check "uninstall again: nothing left to remove, Steam stays untouched" '
+  b="$(steam_listing)"; "$INSTALL" --uninstall >/dev/null 2>&1 && [ "$(steam_listing)" = "$b" ]'
 
 echo "== translation packs"
 install >/dev/null 2>&1
@@ -137,6 +133,36 @@ check "remove-pack: the original game is back, saves kept" '
 check "remove-pack when there is none: succeeds" '"$INSTALL" --remove-pack 2>&1 | grep -q "no translation"'
 "$INSTALL" --uninstall >/dev/null 2>&1
 
+echo "== the installer asks about a fan translation by itself"
+# expect talks to the prompt the way a real typist does: it waits for the "> "
+# prompt, sends the answer, and the pty stays alive until the installer exits.
+run_ask() {
+  VA11_I="$INSTALL" VA11_F="$FAKE_RUNNER" expect "$WORK/ask.expect" "$1" > "$WORK/ask.log" 2>&1
+}
+cat > "$WORK/ask.expect" <<'EXPECT'
+set timeout 90
+log_user 1
+unset -nocomplain env(VA11_NO_DIALOG)
+spawn /bin/bash $env(VA11_I) --runner $env(VA11_F)
+set answer [lindex $argv 0]
+expect {
+  -re {> } { send -- "$answer\r"; expect eof }
+  -re {All set} { }
+  eof {}
+}
+exit 0
+EXPECT
+check "ask: an empty answer skips and the game stays original" '
+  run_ask "" && grep -q "All set" "$WORK/ask.log" && ! [ -e "$DATA/overrides/data.win" ]'
+check "ask: a pack dragged into the prompt is installed" '
+  run_ask "$WORK/pack.zip" && [ "$(cat "$DATA/overrides/data.win")" = translated-data ]'
+check "ask: a pack already installed is kept and the prompt does not re-ask" '
+  run_ask "" && grep -q "already installed" "$WORK/ask.log"'
+"$INSTALL" --remove-pack >/dev/null 2>&1
+check "ask: without a Terminal session the question is skipped" '
+  install >"$WORK/np.out" 2>&1 && grep -q "Translation: skipped" "$WORK/np.out"'
+"$INSTALL" --remove-pack >/dev/null 2>&1
+
 echo "== downloading the release"
 REL="$WORK/release"
 STAGE="$REL/va11-hall-a-mac"
@@ -164,7 +190,7 @@ check "download: an unreachable release says so" '! "$INSTALL" --release-url "fi
 echo "== only tools every Mac has"
 TOOLS="$WORK/tools"
 mkdir -p "$TOOLS"
-for t in awk basename cat chmod codesign cp curl cut dirname file find grep head ls mkdir mktemp mv osascript plutil rm sed shasum sw_vers tail tar tr uname unzip xattr xargs sort; do
+for t in awk basename cat chmod codesign cp curl cut dirname file find grep head ls mkdir mktemp mv osacompile osascript plutil rm sed shasum sw_vers tail tar tr uname unzip xattr xargs sort; do
   ln -s "$(command -v $t)" "$TOOLS/$t"
 done
 for t in git make cc lipo gcc clang xcrun; do

@@ -24,7 +24,7 @@ check() {
 
 export VA11_STEAM_RESOURCES="$RESOURCES" VA11_APP_DIR="$APP_DIR" VA11_DATA_DIR="$DATA" VA11_NO_DIALOG=1
 
-cat "$REL/install.sh" | /bin/bash -s -- --release-url "file://$REL" --no-steam-hook >"$WORK/out.txt" 2>&1
+cat "$REL/install.sh" | /bin/bash -s -- --release-url "file://$REL" >"$WORK/out.txt" 2>&1
 
 check "release: the piped installer finishes" 'grep -q "All set" "$WORK/out.txt"'
 check "release: the runner has an Apple Silicon and an Intel part" 'file -b "$APP/Contents/MacOS/butterscotch" | grep -q "universal binary with 2 architectures"'

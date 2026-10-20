@@ -13,16 +13,17 @@ the overrides folder and the Steam original is back on the next launch.
 
 ## The easy way: a translation pack
 
-Download the pack from the translators' own page, then run the installer with `--pack`:
+Download the pack from the translators' own page — for the Korean translation, that is [Team.SM's page](https://team-sm.tistory.com/96) ("한국어 패치 V4") — then install it in either of these ways:
 
-```sh
-curl -fsSL https://github.com/kecan0406/va11-hall-a-mac/releases/latest/download/install.sh | bash -s -- --pack
-```
+- **No Terminal at all:** drop the pack on "VA-11 Hall-A Install Translation" in `~/Applications`. A dialog says when
+  it is done and when something went wrong.
+- **In the Terminal:** run the install line as usual; at the end it asks whether you have a fan translation. Drag the
+  pack (`.zip`, `.rar` or `.7z`) into the Terminal window and press `Return`, or press `Return` alone to skip and
+  install it later the same way. An installed pack is kept and not asked about again.
 
-A window opens; choose the `.zip`, `.rar` or `.7z` file you downloaded. The installer opens it, finds the pack's
-`data.win` and the language folders that the game has too (such as `scripts`), and puts them in `overrides/`. Files a Mac
-doesn't need (Windows programs, readme files) are left out, and it says which. You can also give the file or an
-unzipped folder: `... | bash -s -- --pack ~/Downloads/pack.rar`.
+The installer opens the pack, finds its `data.win` and the language folders that the game has too (such as `scripts`),
+and puts them in `overrides/`. Files a Mac doesn't need (Windows programs, readme files) are left out, and it says
+which. A `.rar` needs the `unar` tool (`brew install unar`); without it, unpack the pack with Keka and drop the folder.
 
 To go back to the original text: `... | bash -s -- --remove-pack`.
 

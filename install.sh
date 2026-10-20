@@ -10,6 +10,7 @@ LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Versions/A/Framewor
 APP_DIR="${VA11_APP_DIR:-$HOME/Applications}"
 DATA_DIR="${VA11_DATA_DIR:-$HOME/Library/Application Support/$DATA_DIR_NAME}"
 STEAM_RESOURCES="${VA11_STEAM_RESOURCES:-}"
+DROPLET_BASENAME="VA-11 Hall-A Install Translation.app"
 RELEASE_BASE="${VA11_RELEASE_URL:-https://github.com/$REPO/releases/latest/download}"
 
 RUNNER_SRC=""
@@ -19,9 +20,9 @@ VERSION_TEXT=""
 SCRIPT_DIR=""
 TMP=""
 MODE=install
-HOOK=1
 PACK_SRC=""
 MAC_DESC=""
+DROPLET=""
 
 usage() {
   cat <<EOF
@@ -29,17 +30,12 @@ VA-11 Hall-A for Mac: installer
 
 Usage: install.sh [options]
 
-With no options it installs (or updates) the app and connects Steam's Play button.
+With no options it installs (or updates) the app, connects Steam's Play button, and asks whether to install a
+fan translation (drag the pack in, or press Return to skip).
 
-  --no-steam-hook          install the app but leave Steam's files alone
-  --steam-unhook           give Steam its original Mac_Runner back and keep the app
-  --pack [FILE]            install a fan translation (.zip, .rar, .7z or a folder);
-                           without FILE a window lets you choose the file
   --remove-pack            go back to the game's original text
   --uninstall              remove the app and the Play button connection (saves are kept)
   --doctor                 show what the installer sees on this Mac
-  --app-dir DIR            install somewhere other than ~/Applications
-  --steam-resources DIR    the game's Contents/Resources folder, if it isn't found automatically
   -h, --help               show this help
 
 For developers:
@@ -87,16 +83,12 @@ ensure_tmp() {
 parse_args() {
   while [ $# -gt 0 ]; do
     case "$1" in
-      --no-steam-hook) HOOK=0 ;;
-      --steam-unhook) MODE=unhook ;;
       --pack)
         MODE=pack
         if [ $# -ge 2 ] && [ "${2#--}" = "$2" ]; then PACK_SRC="$2"; shift; fi ;;
       --remove-pack) MODE=remove_pack ;;
       --uninstall) MODE=uninstall ;;
       --doctor) MODE=doctor ;;
-      --app-dir) [ $# -ge 2 ] || fail "--app-dir needs a folder"; APP_DIR="$2"; shift ;;
-      --steam-resources) [ $# -ge 2 ] || fail "--steam-resources needs a folder"; STEAM_RESOURCES="$2"; shift ;;
       --runner) [ $# -ge 2 ] || fail "--runner needs a file"; RUNNER_SRC="$2"; shift ;;
       --release-url) [ $# -ge 2 ] || fail "--release-url needs a URL"; RELEASE_BASE="$2"; shift ;;
       -h|--help) usage; exit 0 ;;
@@ -105,9 +97,10 @@ parse_args() {
     shift
   done
   case "$APP_DIR" in /*) ;; *) APP_DIR="$PWD/$APP_DIR" ;; esac
-  if [ "$APP_DIR" = "/" ]; then fail "--app-dir can't be the root folder"; fi
+  if [ "$APP_DIR" = "/" ]; then fail "the app folder can't be the root folder"; fi
   APP="$APP_DIR/$APP_BASENAME"
   OVERRIDES="$DATA_DIR/overrides"
+  DROPLET="$APP_DIR/$DROPLET_BASENAME"
 }
 
 check_mac() {
@@ -149,8 +142,7 @@ resolve_game() {
   if [ -z "$STEAM_RESOURCES" ] || [ ! -f "$STEAM_RESOURCES/game.ios" ]; then
     fail "I can't find VA-11 Hall-A in Steam." \
       "1. Open Steam, find VA-11 Hall-A in your library and press Install." \
-      "2. When it has finished downloading, run this again." \
-      "If the game is somewhere unusual, add: --steam-resources \"<game folder>/<name>.app/Contents/Resources\""
+      "2. When it has finished downloading, run this again."
   fi
 }
 
@@ -239,6 +231,51 @@ PLIST
   codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || warn "the app couldn't be signed; it usually still runs"
 }
 
+# A small app that installs a translation without the Terminal: drop the pack
+# on its icon in the Finder, or double-click it to choose the file in a window.
+make_droplet() {
+  if [ ! -f "$APP/Contents/Resources/install.sh" ]; then
+    warn "the translation app wasn't made (the installer isn't inside this app)"
+    return 1
+  fi
+  ensure_tmp
+  # The path goes into the AppleScript source as a literal string, so the
+  # characters that mean something there are escaped ahead of time.
+  local installer_text
+  installer_text="$(printf '%s' "$APP/Contents/Resources/install.sh" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
+  cat > "$TMP/droplet.applescript" <<AS
+on open dropped
+  repeat with f in dropped
+    pack(POSIX path of f)
+  end repeat
+end open
+
+on run
+  pack(POSIX path of (choose file with prompt "Choose the translation file (.zip, .rar or .7z), or drop it on this app instead"))
+end run
+
+on pack(p)
+  try
+    do shell script quoted form of "$installer_text" & " --pack " & quoted form of p
+    display dialog "The translation is installed. Start the game as usual." buttons {"OK"} default button 1 with title "VA-11 Hall-A" with icon note
+  on error msg number n
+    if n is not -128 then
+      display dialog "The translation couldn't be installed:" & return & msg buttons {"OK"} default button 1 with title "VA-11 Hall-A" with icon stop
+    end if
+  end try
+end pack
+AS
+  if [ ! -s "$TMP/droplet.applescript" ]; then
+    warn "the translation app wasn't made (couldn't write its script)"
+    return 1
+  fi
+  osacompile -o "$DROPLET" "$TMP/droplet.applescript" >/dev/null 2>&1 || {
+    warn "the translation app wasn't made (osacompile failed)"
+    return 1
+  }
+  xattr -dr com.apple.quarantine "$DROPLET" >/dev/null 2>&1 || true
+}
+
 steam_runner_path() { echo "$(dirname "$STEAM_RESOURCES")/MacOS/Mac_Runner"; }
 
 is_hook() { [ -f "$1" ] && head -c 200 "$1" | grep -aq '^VA11_STEAM_HOOK=1$'; }
@@ -269,7 +306,7 @@ steam_hook() {
 if [ ! -x "$LAUNCHER" ]; then
   echo "VA-11 Hall-A: the app is missing." >&2
   if [ -z "${VA11_NO_DIALOG:-}" ]; then
-    osascript -e 'display alert "VA-11 Hall-A" message "The app is missing. Running the installer again fixes it. To let Steam use its own file instead, run the installer with --steam-unhook."' >/dev/null 2>&1
+    osascript -e 'display alert "VA-11 Hall-A" message "The app is missing. Running the installer again fixes it, or the --uninstall option hands Steam its own file back."' >/dev/null 2>&1
   fi
   exit 1
 fi
@@ -301,18 +338,100 @@ choose_pack_file() {
     fail "No file was chosen." "To pick the file in the terminal instead: install.sh --pack FILE"
 }
 
+# A file dragged into the Terminal window arrives as one line that macOS already
+# quoted and escaped for the shell. normalize_drop turns it back into a plain path.
+normalize_drop() {
+  local text="$1"
+  text="${text%$'\r'}"
+  case "$text" in
+    "'"*"'")
+      text="$(printf '%s' "$text" | sed -e "s/'\\\\''/'/g")"
+      text="${text#\'}"; text="${text%\'}" ;;
+    '"'*'"')
+      text="${text#\"}"; text="${text%\"}"
+      text="$(printf '%s' "$text" | sed -e 's/\\"/"/g' -e 's/\\\\/\\/g')" ;;
+    *)
+      text="$(printf '%s' "$text" | sed -e 's/\\\(.\)/\1/g')" ;;
+  esac
+  printf '%s\n' "$text"
+}
+
+# With --pack and no file: the user drags the file into this window, or presses
+# Return alone and a window opens to choose the file the ordinary way.
+read_drop() {
+  local text
+  if ! exec 9</dev/tty 2>/dev/null; then
+    choose_pack_file
+    return 0
+  fi
+  say ""
+  say "Drag the translation file (.zip, .rar or .7z) or the unpacked folder into this window and press Return."
+  say "Press Return on an empty line to choose the file in a window instead."
+  while :; do
+    printf '> '
+    IFS= read -r text <&9 || { choose_pack_file; return 0; }
+    [ -z "$text" ] && { choose_pack_file; return 0; }
+    text="$(normalize_drop "$text")"
+    if [ -n "$text" ] && [ -e "$text" ]; then
+      PACK_SRC="$text"
+      exec 9<&-
+      return 0
+    fi
+    warn "I can't see that file (${text:-empty})." "Drag it into the window again."
+  done
+}
+
+# Step 5 of a normal install: ask whether the user has a fan translation, so
+# that the Korean patch (or any other language) goes in during this very run.
+# Dragging the pack into the window installs it; an empty answer skips it.
+ask_pack() {
+  if [ -e "$OVERRIDES/data.win" ]; then
+    say "  Translation: already installed — keeping it. (Undo: install.sh --remove-pack)"
+    return 0
+  fi
+  if [ -n "${VA11_NO_DIALOG:-}" ] || ! exec 9</dev/tty 2>/dev/null; then
+    say "  Translation: skipped — drop a pack on the Install Translation app later to add one."
+    return 0
+  fi
+  say "  Have a fan translation? Drag the file into this window and press Return."
+  say "  e.g. ~/Downloads/VA-11 HALL-A KR V4.rar — or just press Return to skip."
+  while :; do
+    printf '  > '
+    IFS= read -r text <&9 || { exec 9<&-; say "  Skipped."; return 0; }
+    [ -z "$text" ] && { exec 9<&-; say "  Skipped."; return 0; }
+    case "$text" in n|N|no|No) exec 9<&-; say "  Skipped."; return 0 ;; esac
+    text="$(normalize_drop "$text")"
+    if [ -n "$text" ] && [ -e "$text" ]; then
+      PACK_SRC="$text"
+      exec 9<&-
+      ensure_tmp
+      if ( install_pack ); then :; else
+        warn "That file didn't install as a translation; the game itself is fine." "Run the installer again if you want to try another file."
+      fi
+      return 0
+    fi
+    warn "  I can't see that file." "  Try dragging again, or press Return to skip."
+  done
+}
+
 install_pack() {
   local source="$PACK_SRC" root data entry name installed="" ignored=""
   resolve_game
-  if [ -z "$source" ]; then source="$(choose_pack_file)"; fi
+  if [ -z "$source" ]; then read_drop; source="$PACK_SRC"; fi
   [ -e "$source" ] || fail "I can't find $source"
   ensure_tmp
   if [ -d "$source" ]; then
     root="$source"
   else
     mkdir -p "$TMP/pack"
-    tar -xf "$source" -C "$TMP/pack" >/dev/null 2>&1 ||
-      fail "I can't open $source." "Try a .zip, or unpack it in an app like Keka and install the folder: install.sh --pack <folder>"
+    if ! tar -xf "$source" -C "$TMP/pack" >/dev/null 2>&1; then
+      rm -rf "$TMP/pack"; mkdir -p "$TMP/pack"
+      if ! command -v unar >/dev/null 2>&1; then
+        fail "I can't open $source." "Try a .zip, or unpack it in an app like Keka and install the folder: install.sh --pack <folder>"
+      fi
+      unar -o "$TMP/pack" -force-overwrite "$source" >/dev/null 2>&1 ||
+        fail "I can't open $source." "Try a .zip, or unpack it in an app like Keka and install the folder: install.sh --pack <folder>"
+    fi
     find "$TMP/pack" -type l -delete
     root="$TMP/pack"
   fi
@@ -377,6 +496,7 @@ do_doctor() {
   echo "App:           $app_state ($APP)"
   echo "Play button:   $state"
   echo "Translation:   $pack"
+  echo "Pack app:      $([ -d "$DROPLET" ] && echo installed || echo 'not installed') ($DROPLET)"
   echo "Saves:         $DATA_DIR/saves"
   case "$app_state" in
     "not installed") echo "Next:          run the installer again to install the app." ;;
@@ -390,23 +510,22 @@ do_doctor() {
 do_install() {
   banner
   say "VA-11 Hall-A for Mac"
-  step 1 4 "Checking your Mac"
+  step 1 5 "Checking your Mac"
   check_mac
   say "  OK: $MAC_DESC"
-  step 2 4 "Looking for the game in Steam"
+  step 2 5 "Looking for the game in Steam"
   resolve_game
   say "  Found it."
-  step 3 4 "Installing the app"
+  step 3 5 "Installing the app"
   prepare_payload
   make_app
   say "  Installed: $APP"
-  step 4 4 "Connecting Steam's Play button"
+  make_droplet && say "  Created:   $DROPLET"
+  step 4 5 "Connecting Steam's Play button"
   local connected=0
-  if [ "$HOOK" = 1 ]; then
-    if steam_hook; then connected=1; say "  Done."; else warn "The Play button isn't connected. The app itself is installed."; fi
-  else
-    say "  Skipped, as you asked."
-  fi
+  if steam_hook; then connected=1; say "  Done."; else warn "The Play button isn't connected. The app itself is installed."; fi
+  step 5 5 "Fan translation"
+  ask_pack
   echo
   say "All set."
   if [ "$connected" = 1 ]; then
@@ -416,6 +535,7 @@ do_install() {
   fi
   say "  If the first Play opens an error, press Play again."
   say "  If Play stops working after Steam checks or updates the game, run the same installer again."
+  say "  To add a fan translation later, run this installer again and drag the pack in when asked."
 }
 
 do_uninstall() {
@@ -427,6 +547,10 @@ do_uninstall() {
   else
     say "The app isn't installed."
   fi
+  if [ -d "$DROPLET" ]; then
+    rm -rf "$DROPLET"
+    say "The translation app is removed."
+  fi
   say "Your saves and translation files are still in: $DATA_DIR"
   say "Delete that folder too if you want everything gone."
 }
@@ -435,7 +559,6 @@ main() {
   parse_args "$@"
   case "$MODE" in
     install) do_install ;;
-    unhook) resolve_game; steam_unhook ;;
     pack) install_pack ;;
     remove_pack) remove_pack ;;
     uninstall) do_uninstall ;;

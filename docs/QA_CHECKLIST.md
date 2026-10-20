@@ -65,7 +65,7 @@ to share a session as a test, start it with `--record-inputs my_session.json` (s
 - [ ] The game is in front and takes keyboard and mouse input straight away
 - [ ] The Steam shortcut in `~/Applications` (if you made one) starts the game too
 - [ ] After "Verify integrity of game files", `--doctor` says the Play button isn't connected and running the install line again brings it back
-- [ ] `--steam-unhook` makes Play fail again as it did before; running the install line again fixes it
+- [ ] `--uninstall` makes Play fail again as it did before and removes the two apps; running the install line again brings everything back
 
 ## Overrides and translations (docs/MODS.md)
 
