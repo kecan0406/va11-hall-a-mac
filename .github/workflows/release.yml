@@ -29,8 +29,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            build/release/va11-hall-a-mac.zip \
-            build/release/va11-hall-a-mac.zip.sha256 \
-            build/release/install.sh \
-            --title "$GITHUB_REF_NAME" --generate-notes
+          FILES=(build/release/va11-hall-a-mac.zip build/release/va11-hall-a-mac.zip.sha256 build/release/install.sh)
+          if ! gh release create "$GITHUB_REF_NAME" "${FILES[@]}" \
+               --title "$GITHUB_REF_NAME" --generate-notes 2>/dev/null; then
+            # the release already exists (a local run made it): refresh its files
+            gh release upload "$GITHUB_REF_NAME" "${FILES[@]}" --clobber
+          fi
