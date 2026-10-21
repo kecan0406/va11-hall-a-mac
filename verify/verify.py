@@ -92,7 +92,11 @@ def run_plain(cmd, timeout=300):
 
 
 def sha256(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def prepare_sandbox(ctx):
@@ -457,7 +461,7 @@ def main():
 
     base_sandbox, ctx.game = prepare_sandbox(ctx)
     mac = platform.mac_ver()[0]
-    ctx.fingerprint = "macOS %s|%s|runner %s|game %d bytes" % (mac, platform.machine(), sha256(ctx.runner)[:10], ctx.game.resolve().stat().st_size)
+    ctx.fingerprint = "macOS %s|%s|runner %s|game %s" % (mac, platform.machine(), sha256(ctx.runner)[:10], sha256(ctx.game)[:10])
 
     print("Criteria (fixed before running):")
     for name, text in CRITERIA:

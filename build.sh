@@ -82,7 +82,7 @@ build_slice() {
 }
 
 build_runner() {
-  local archs
+  local archs arch slices=()
   if [ "$UNIVERSAL" = 1 ]; then archs="arm64 x86_64"; else archs="$(uname -m)"; fi
 
   fetch_and_patch
@@ -93,9 +93,10 @@ build_runner() {
       x86_64) build_slice x86_64 "$TARGET_X86_64" ;;
       *) die "unsupported architecture: $arch" ;;
     esac
+    slices+=("$DIST/butterscotch-$arch")
   done
 
-  lipo -create $(for arch in $archs; do echo "$DIST/butterscotch-$arch"; done) -output "$DIST/butterscotch"
+  lipo -create "${slices[@]}" -output "$DIST/butterscotch"
   echo "Runner: $DIST/butterscotch ($(lipo -archs "$DIST/butterscotch"))"
 }
 

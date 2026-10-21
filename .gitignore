@@ -1,4 +1,6 @@
 build/
+/va11-hall-a-mac.zip
+/va11-hall-a-mac.zip.sha256
 verify/report/
 verify/baseline.json
 .DS_Store
