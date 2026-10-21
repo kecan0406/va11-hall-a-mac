@@ -17,9 +17,10 @@ Download the pack from the translators' own page — for the Korean translation,
 
 - **No Terminal at all:** drop the pack on "VA-11 Hall-A Install Translation" in `~/Applications`. A dialog says when
   it is done and when something went wrong.
-- **In the Terminal:** run the install line as usual; at the end it asks whether you have a fan translation. Drag the
-  pack (`.zip`, `.rar` or `.7z`) into the Terminal window and press `Return`, or press `Return` alone to skip and
-  install it later the same way. An installed pack is kept and not asked about again.
+- **In the Terminal:** run the install line as usual; at the end it asks whether you have a fan translation. Answer
+  `y`, then drag the pack (`.zip`, `.rar` or `.7z`) into the Terminal window and press `Return`, or press `Return`
+  alone to choose it in a window. Answering `n` or pressing `Return` at the question skips it; install it later the
+  same way. An installed pack is kept and not asked about again.
 
 The installer opens the pack, finds its `data.win` and the language folders that the game has too (such as `scripts`),
 and puts them in `overrides/`. Files a Mac doesn't need (Windows programs, readme files) are left out, and it says

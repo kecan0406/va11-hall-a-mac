@@ -30,8 +30,8 @@ VA-11 Hall-A for Mac: installer
 
 Usage: install.sh [options]
 
-With no options it installs (or updates) the app, connects Steam's Play button, and asks whether to install a
-fan translation (drag the pack in, or press Return to skip).
+With no options it installs (or updates) the app, connects Steam's Play button, and asks whether you have a
+fan translation to install (y, then drag the pack in; Return skips).
 
   --remove-pack            go back to the game's original text
   --uninstall              remove the app and the Play button connection (saves are kept)
@@ -402,8 +402,9 @@ read_drop() {
 
 # Step 5 of a normal install: ask whether the user has a fan translation, so
 # that the Korean patch (or any other language) goes in during this very run.
-# Dragging the pack into the window installs it; an empty answer skips it.
+# Yes leads to the same file prompt as --pack; no, or just Return, skips it.
 ask_pack() {
+  local answer
   if [ -e "$OVERRIDES/data.win" ]; then
     say "  Translation: already installed — keeping it. (Undo: install.sh --remove-pack)"
     return 0
@@ -412,15 +413,19 @@ ask_pack() {
     say "  Translation: skipped — drop a pack on the Install Translation app later to add one."
     return 0
   fi
-  say "  Have a fan translation? Drag the file into this window and press Return."
-  say "  e.g. ~/Downloads/VA-11 HALL-A KR V4.rar — or just press Return to skip."
-  if ! read_pack_path '  > '; then
-    say "  Skipped."
-    return 0
-  fi
+  while :; do
+    printf '  Do you have a fan translation to install? [y/N] '
+    read -r answer <&9 || answer=""
+    case "$answer" in
+      [yY]|[yY][eE][sS]) break ;;
+      ''|[nN]|[nN][oO]) exec 9<&-; say "  Skipped."; return 0 ;;
+    esac
+    warn "Answer y or n."
+  done
+  exec 9<&-
   ensure_tmp
   if ( install_pack ); then :; else
-    warn "That file didn't install as a translation; the game itself is fine." "Run the installer again if you want to try another file."
+    warn "No translation was installed; the game itself is fine." "Run the installer again to try another file."
   fi
 }
 
@@ -549,7 +554,7 @@ do_install() {
   fi
   say "  If the first Play opens an error, press Play again."
   say "  If Play stops working after Steam checks or updates the game, run the same installer again."
-  say "  To add a fan translation later, run this installer again and drag the pack in when asked."
+  say "  To add a fan translation later, run this installer again and answer y when asked."
 }
 
 do_uninstall() {

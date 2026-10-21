@@ -134,9 +134,10 @@ check "remove-pack when there is none: succeeds" '"$INSTALL" --remove-pack 2>&1 
 "$INSTALL" --uninstall >/dev/null 2>&1
 
 echo "== the installer asks about a fan translation by itself"
-# expect talks to the prompt the way a real typist does: it waits for the "> "
-# prompt, sends the answer, and the pty stays alive until the installer exits.
-# run_ask ANSWER INSTALLER-OPTIONS...
+# expect talks to the prompts the way a real typist does: it answers the [y/N]
+# question and the "> " file prompt once each, and the pty stays alive until the
+# installer exits.
+# run_ask YES-OR-NO FILE INSTALLER-OPTIONS...
 run_ask() {
   VA11_I="$INSTALL" expect "$WORK/ask.expect" "$@" > "$WORK/ask.log" 2>&1
 }
@@ -144,11 +145,13 @@ cat > "$WORK/ask.expect" <<'EXPECT'
 set timeout 90
 log_user 1
 unset -nocomplain env(VA11_NO_DIALOG)
-set answer [lindex $argv 0]
-spawn /bin/bash $env(VA11_I) {*}[lrange $argv 1 end]
+lassign $argv yesno file
+spawn /bin/bash $env(VA11_I) {*}[lrange $argv 2 end]
+set asked 0
+set dropped 0
 expect {
-  -re {> } { send -- "$answer\r"; expect eof }
-  -re {All set} { }
+  -re {\[y/N\] } { if {!$asked} { set asked 1; send -- "$yesno\r" }; exp_continue }
+  -re {> } { if {!$dropped} { set dropped 1; send -- "$file\r" }; exp_continue }
   eof {}
 }
 exit 0
@@ -157,20 +160,21 @@ EXPECT
 cp "$WORK/pack.zip" "$WORK/Some Pack V4.zip"
 DROPPED="$(printf '%s' "$WORK/Some Pack V4.zip" | sed 's/ /\\ /g') "
 check "ask: an empty answer skips and the game stays original" '
-  run_ask "" --runner "$FAKE_RUNNER" && grep -q "All set" "$WORK/ask.log" && ! [ -e "$DATA/overrides/data.win" ]'
-check "ask: a pack dragged into the prompt is installed" '
-  run_ask "$DROPPED" --runner "$FAKE_RUNNER" && [ "$(cat "$DATA/overrides/data.win")" = translated-data ]'
-check "ask: a pack already installed is kept and the prompt does not re-ask" '
-  run_ask "" --runner "$FAKE_RUNNER" && grep -q "already installed" "$WORK/ask.log"'
+  run_ask "" "" --runner "$FAKE_RUNNER" && grep -q "Skipped" "$WORK/ask.log" && grep -q "All set" "$WORK/ask.log" &&
+  ! [ -e "$DATA/overrides/data.win" ]'
+check "ask: y, then a pack dragged into the window, installs it" '
+  run_ask y "$DROPPED" --runner "$FAKE_RUNNER" && [ "$(cat "$DATA/overrides/data.win")" = translated-data ]'
+check "ask: a pack already installed is kept and the question is not asked again" '
+  run_ask "" "" --runner "$FAKE_RUNNER" && grep -q "already installed" "$WORK/ask.log" && ! grep -q "y/N" "$WORK/ask.log"'
 "$INSTALL" --remove-pack >/dev/null 2>&1
 check "ask: a file that is not a translation says why, and the install still finishes" '
-  run_ask "$WORK/notes.zip" --runner "$FAKE_RUNNER" && grep -q "no data.win" "$WORK/ask.log" &&
-  grep -q "didn.t install as a translation" "$WORK/ask.log" && grep -q "All set" "$WORK/ask.log"'
+  run_ask y "$WORK/notes.zip" --runner "$FAKE_RUNNER" && grep -q "no data.win" "$WORK/ask.log" &&
+  grep -q "No translation was installed" "$WORK/ask.log" && grep -q "All set" "$WORK/ask.log"'
 mkdir -p "$WORK/chooser"
 printf '#!/bin/sh\necho "%s"\n' "$WORK/pack.zip" > "$WORK/chooser/osascript"
 chmod 755 "$WORK/chooser/osascript"
 check "--pack: Return on an empty line opens the file window, and the chosen file is installed" '
-  PATH="$WORK/chooser:$PATH" run_ask "" --pack && [ "$(cat "$DATA/overrides/data.win")" = translated-data ]'
+  PATH="$WORK/chooser:$PATH" run_ask "" "" --pack && [ "$(cat "$DATA/overrides/data.win")" = translated-data ]'
 "$INSTALL" --remove-pack >/dev/null 2>&1
 check "ask: without a Terminal session the question is skipped" '
   install >"$WORK/np.out" 2>&1 && grep -q "Translation: skipped" "$WORK/np.out"'

@@ -26,8 +26,8 @@ curl -fsSL https://github.com/kecan0406/va11-hall-a-mac/releases/latest/download
 When it says "All set", press **Play** in Steam. Saves live in `~/Library/Application Support/VA-11 Hall-A/`. If Play
 stops working after Steam verifies or updates the game, run the line again.
 
-A fan translation is asked about at the end of the install: drag the pack into the window, or drop it on
-"VA-11 Hall-A Install Translation" in `~/Applications` ([docs/MODS.md](docs/MODS.md)).
+At the end the install asks whether you have a fan translation: answer `y` and drag the pack into the window, or
+drop it on "VA-11 Hall-A Install Translation" in `~/Applications` later ([docs/MODS.md](docs/MODS.md)).
 
 Add after `bash -s --`:
 
