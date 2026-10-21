@@ -339,10 +339,17 @@ choose_pack_file() {
 }
 
 # A file dragged into the Terminal window arrives as one line that macOS already
-# quoted and escaped for the shell. normalize_drop turns it back into a plain path.
+# quoted and escaped for the shell, followed by a space. normalize_drop turns it
+# back into a plain path; a typed ~/ path works too.
 normalize_drop() {
   local text="$1"
-  text="${text%$'\r'}"
+  while :; do
+    case "$text" in
+      *\\' ') break ;;
+      *[[:space:]]) text="${text%?}" ;;
+      *) break ;;
+    esac
+  done
   case "$text" in
     "'"*"'")
       text="$(printf '%s' "$text" | sed -e "s/'\\\\''/'/g")"
@@ -353,32 +360,44 @@ normalize_drop() {
     *)
       text="$(printf '%s' "$text" | sed -e 's/\\\(.\)/\1/g')" ;;
   esac
+  case "$text" in "~/"*) text="$HOME/${text#\~/}" ;; esac
   printf '%s\n' "$text"
+}
+
+# Questions are read from the terminal on fd 9: when the installer runs as
+# curl | bash, its own input is the script.
+open_tty() { { exec 9</dev/tty; } 2>/dev/null; }
+
+# Reads paths dragged into the terminal until one exists and keeps it in
+# PACK_SRC. An empty answer, "no" or the end of input returns 1.
+read_pack_path() {
+  local text
+  while :; do
+    printf '%s' "$1"
+    IFS= read -r text <&9 || break
+    text="$(normalize_drop "$text")"
+    case "$text" in ''|n|N|no|No) break ;; esac
+    if [ -e "$text" ]; then
+      PACK_SRC="$text"
+      exec 9<&-
+      return 0
+    fi
+    warn "I can't see that file ($text). Drag it into the window again."
+  done
+  exec 9<&-
+  return 1
 }
 
 # With --pack and no file: the user drags the file into this window, or presses
 # Return alone and a window opens to choose the file the ordinary way.
 read_drop() {
-  local text
-  if ! exec 9</dev/tty 2>/dev/null; then
-    choose_pack_file
-    return 0
+  if open_tty; then
+    say ""
+    say "Drag the translation file (.zip, .rar or .7z) or the unpacked folder into this window and press Return."
+    say "Press Return on an empty line to choose the file in a window instead."
+    read_pack_path '> ' && return 0
   fi
-  say ""
-  say "Drag the translation file (.zip, .rar or .7z) or the unpacked folder into this window and press Return."
-  say "Press Return on an empty line to choose the file in a window instead."
-  while :; do
-    printf '> '
-    IFS= read -r text <&9 || { choose_pack_file; return 0; }
-    [ -z "$text" ] && { choose_pack_file; return 0; }
-    text="$(normalize_drop "$text")"
-    if [ -n "$text" ] && [ -e "$text" ]; then
-      PACK_SRC="$text"
-      exec 9<&-
-      return 0
-    fi
-    warn "I can't see that file (${text:-empty})." "Drag it into the window again."
-  done
+  PACK_SRC="$(choose_pack_file)" || exit 1
 }
 
 # Step 5 of a normal install: ask whether the user has a fan translation, so
@@ -389,33 +408,31 @@ ask_pack() {
     say "  Translation: already installed — keeping it. (Undo: install.sh --remove-pack)"
     return 0
   fi
-  if [ -n "${VA11_NO_DIALOG:-}" ] || ! exec 9</dev/tty 2>/dev/null; then
+  if [ -n "${VA11_NO_DIALOG:-}" ] || ! open_tty; then
     say "  Translation: skipped — drop a pack on the Install Translation app later to add one."
     return 0
   fi
   say "  Have a fan translation? Drag the file into this window and press Return."
   say "  e.g. ~/Downloads/VA-11 HALL-A KR V4.rar — or just press Return to skip."
-  while :; do
-    printf '  > '
-    IFS= read -r text <&9 || { exec 9<&-; say "  Skipped."; return 0; }
-    [ -z "$text" ] && { exec 9<&-; say "  Skipped."; return 0; }
-    case "$text" in n|N|no|No) exec 9<&-; say "  Skipped."; return 0 ;; esac
-    text="$(normalize_drop "$text")"
-    if [ -n "$text" ] && [ -e "$text" ]; then
-      PACK_SRC="$text"
-      exec 9<&-
-      ensure_tmp
-      if ( install_pack ); then :; else
-        warn "That file didn't install as a translation; the game itself is fine." "Run the installer again if you want to try another file."
-      fi
-      return 0
-    fi
-    warn "  I can't see that file." "  Try dragging again, or press Return to skip."
-  done
+  if ! read_pack_path '  > '; then
+    say "  Skipped."
+    return 0
+  fi
+  ensure_tmp
+  if ( install_pack ); then :; else
+    warn "That file didn't install as a translation; the game itself is fine." "Run the installer again if you want to try another file."
+  fi
+}
+
+# Copies one item of a pack into overrides/, replacing what was there. The
+# failure is checked here because ask_pack runs install_pack where set -e is off.
+copy_override() {
+  mkdir -p "$OVERRIDES" && rm -rf "${OVERRIDES:?}/$2" && cp -R "$1" "$OVERRIDES/$2" ||
+    fail "I couldn't copy $2 into $OVERRIDES." "Check that the disk has free space, then run this again."
 }
 
 install_pack() {
-  local source="$PACK_SRC" root data entry name installed="" ignored=""
+  local source="$PACK_SRC" root data entry name unar installed="" ignored=""
   resolve_game
   if [ -z "$source" ]; then read_drop; source="$PACK_SRC"; fi
   [ -e "$source" ] || fail "I can't find $source"
@@ -426,28 +443,25 @@ install_pack() {
     mkdir -p "$TMP/pack"
     if ! tar -xf "$source" -C "$TMP/pack" >/dev/null 2>&1; then
       rm -rf "$TMP/pack"; mkdir -p "$TMP/pack"
-      if ! command -v unar >/dev/null 2>&1; then
-        fail "I can't open $source." "Try a .zip, or unpack it in an app like Keka and install the folder: install.sh --pack <folder>"
-      fi
-      unar -o "$TMP/pack" -force-overwrite "$source" >/dev/null 2>&1 ||
+      # The translation app runs this from AppleScript, whose PATH leaves out Homebrew.
+      unar="$(PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"; command -v unar)" &&
+        "$unar" -o "$TMP/pack" -force-overwrite "$source" >/dev/null 2>&1 ||
         fail "I can't open $source." "Try a .zip, or unpack it in an app like Keka and install the folder: install.sh --pack <folder>"
     fi
     find "$TMP/pack" -type l -delete
     root="$TMP/pack"
   fi
-  data="$(find "$root" -iname data.win -type f -not -path '*/__MACOSX/*' | head -1)"
+  data="$(find "$root" -iname data.win -type f -not -path '*/__MACOSX/*' 2>/dev/null | head -1)" || true
   [ -n "$data" ] || fail "This doesn't look like a translation for this game: there is no data.win inside." \
     "Translations for the Windows version of VA-11 Hall-A work; other kinds of files don't."
   root="$(dirname "$data")"
-  mkdir -p "$OVERRIDES"
-  cp "$data" "$OVERRIDES/data.win"
+  copy_override "$data" data.win
   installed="data.win"
   for entry in "$root"/*; do
     name="${entry##*/}"
     [ "$entry" = "$data" ] && continue
     if [ -d "$entry" ] && [ -d "$STEAM_RESOURCES/$name" ]; then
-      rm -rf "${OVERRIDES:?}/$name"
-      cp -R "$entry" "$OVERRIDES/$name"
+      copy_override "$entry" "$name"
       installed="$installed, $name/"
     else
       ignored="$ignored $name"

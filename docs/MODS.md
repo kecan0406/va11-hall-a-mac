@@ -23,7 +23,8 @@ Download the pack from the translators' own page — for the Korean translation,
 
 The installer opens the pack, finds its `data.win` and the language folders that the game has too (such as `scripts`),
 and puts them in `overrides/`. Files a Mac doesn't need (Windows programs, readme files) are left out, and it says
-which. A `.rar` needs the `unar` tool (`brew install unar`); without it, unpack the pack with Keka and drop the folder.
+which. The `tar` built into macOS opens `.zip`, `.7z` and most `.rar` files; for one it can't, the installer uses
+`unar` if you have it (`brew install unar`), or unpack the pack with Keka and drop the folder.
 
 To go back to the original text: `... | bash -s -- --remove-pack`.
 

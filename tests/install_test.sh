@@ -136,15 +136,16 @@ check "remove-pack when there is none: succeeds" '"$INSTALL" --remove-pack 2>&1 
 echo "== the installer asks about a fan translation by itself"
 # expect talks to the prompt the way a real typist does: it waits for the "> "
 # prompt, sends the answer, and the pty stays alive until the installer exits.
+# run_ask ANSWER INSTALLER-OPTIONS...
 run_ask() {
-  VA11_I="$INSTALL" VA11_F="$FAKE_RUNNER" expect "$WORK/ask.expect" "$1" > "$WORK/ask.log" 2>&1
+  VA11_I="$INSTALL" expect "$WORK/ask.expect" "$@" > "$WORK/ask.log" 2>&1
 }
 cat > "$WORK/ask.expect" <<'EXPECT'
 set timeout 90
 log_user 1
 unset -nocomplain env(VA11_NO_DIALOG)
-spawn /bin/bash $env(VA11_I) --runner $env(VA11_F)
 set answer [lindex $argv 0]
+spawn /bin/bash $env(VA11_I) {*}[lrange $argv 1 end]
 expect {
   -re {> } { send -- "$answer\r"; expect eof }
   -re {All set} { }
@@ -152,12 +153,24 @@ expect {
 }
 exit 0
 EXPECT
+# Terminal.app types a dropped file as its path with spaces escaped, then a space.
+cp "$WORK/pack.zip" "$WORK/Some Pack V4.zip"
+DROPPED="$(printf '%s' "$WORK/Some Pack V4.zip" | sed 's/ /\\ /g') "
 check "ask: an empty answer skips and the game stays original" '
-  run_ask "" && grep -q "All set" "$WORK/ask.log" && ! [ -e "$DATA/overrides/data.win" ]'
+  run_ask "" --runner "$FAKE_RUNNER" && grep -q "All set" "$WORK/ask.log" && ! [ -e "$DATA/overrides/data.win" ]'
 check "ask: a pack dragged into the prompt is installed" '
-  run_ask "$WORK/pack.zip" && [ "$(cat "$DATA/overrides/data.win")" = translated-data ]'
+  run_ask "$DROPPED" --runner "$FAKE_RUNNER" && [ "$(cat "$DATA/overrides/data.win")" = translated-data ]'
 check "ask: a pack already installed is kept and the prompt does not re-ask" '
-  run_ask "" && grep -q "already installed" "$WORK/ask.log"'
+  run_ask "" --runner "$FAKE_RUNNER" && grep -q "already installed" "$WORK/ask.log"'
+"$INSTALL" --remove-pack >/dev/null 2>&1
+check "ask: a file that is not a translation says why, and the install still finishes" '
+  run_ask "$WORK/notes.zip" --runner "$FAKE_RUNNER" && grep -q "no data.win" "$WORK/ask.log" &&
+  grep -q "didn.t install as a translation" "$WORK/ask.log" && grep -q "All set" "$WORK/ask.log"'
+mkdir -p "$WORK/chooser"
+printf '#!/bin/sh\necho "%s"\n' "$WORK/pack.zip" > "$WORK/chooser/osascript"
+chmod 755 "$WORK/chooser/osascript"
+check "--pack: Return on an empty line opens the file window, and the chosen file is installed" '
+  PATH="$WORK/chooser:$PATH" run_ask "" --pack && [ "$(cat "$DATA/overrides/data.win")" = translated-data ]'
 "$INSTALL" --remove-pack >/dev/null 2>&1
 check "ask: without a Terminal session the question is skipped" '
   install >"$WORK/np.out" 2>&1 && grep -q "Translation: skipped" "$WORK/np.out"'
