@@ -1,44 +1,32 @@
 diff --git a/src/backends/appkit.m b/src/backends/appkit.m
-index e8b76cc..d7e9bb7 100644
+index e8b76cc..bc76bb5 100644
 --- a/src/backends/appkit.m
 +++ b/src/backends/appkit.m
-@@ -380,6 +380,26 @@ static void platformSetWindowPosition(int32_t x, int32_t y) {
+@@ -380,6 +380,15 @@ static void platformSetWindowPosition(int32_t x, int32_t y) {
      [window setFrameOrigin:newOrigin];
  }
  
-+static bool fullscreenState = false;
-+
++// Read from the window itself rather than kept in a variable that could drift from it.
 +static bool platformGetFullscreen(void) {
-+    return fullscreenState;
++    return ([window styleMask] & NSWindowStyleMaskFullScreen) != 0;
 +}
 +
 +static void platformSetFullscreen(bool enable) {
-+    if (enable == fullscreenState) return;
-+    fullscreenState = enable;
-+    [window toggleFullScreen:nil];
-+}
-+
-+static void appkitObserveFullscreen(void) {
-+    NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
-+    [center addObserverForName:NSWindowWillEnterFullScreenNotification object:window queue:nil
-+                    usingBlock:^(NSNotification *note) { fullscreenState = true; }];
-+    [center addObserverForName:NSWindowWillExitFullScreenNotification object:window queue:nil
-+                    usingBlock:^(NSNotification *note) { fullscreenState = false; }];
++    if (enable != platformGetFullscreen()) [window toggleFullScreen:nil];
 +}
 +
  void platformGetMousePos(double *xPos, double *yPos) {
      NSPoint mouseLocation = appkitWindowPointToViewPixels(glView, [window mouseLocationOutsideOfEventStream]);
      *xPos = mouseLocation.x;
-@@ -590,6 +610,8 @@ bool platformInit(int32_t reqW, int32_t reqH, const char *title, bool headless)
+@@ -590,6 +599,7 @@ bool platformInit(int32_t reqW, int32_t reqH, const char *title, bool headless)
  
      [window setTitle:[NSString stringWithFormat:@"%s", title]];
      [window setAcceptsMouseMovedEvents:YES];
 +    [window setCollectionBehavior:[window collectionBehavior] | NSWindowCollectionBehaviorFullScreenPrimary];
-+    appkitObserveFullscreen();
  
      // Create OpenGL view
      glView =
-@@ -692,6 +714,8 @@ void platformInitFunctions(Runner *runner) {
+@@ -692,6 +702,8 @@ void platformInitFunctions(Runner *runner) {
      g_runner = runner;
      runner->windowHasFocus = windowIsFocused;
      runner->setCursor = platformSetCursor;
