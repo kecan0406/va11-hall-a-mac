@@ -1,17 +1,21 @@
 diff --git a/src/data_win.c b/src/data_win.c
-index 97e354c..fa98d67 100644
+index 97e354c..df16c6c 100644
 --- a/src/data_win.c
 +++ b/src/data_win.c
-@@ -77,10 +77,31 @@ static void unmapFile(uint8_t *ptr, size_t size) {
+@@ -75,12 +75,34 @@ static void unmapFile(uint8_t *ptr, size_t size) {
  
- // Reads a uint32 absolute file offset, resolves it into the pre-loaded STRG buffer,
- // and returns a pointer to the null-terminated string content at that offset.
-+static const char* readStringOutsideStrg(BinaryReader* reader, DataWin* dw, uint32_t offset) {
-+    if (dw->mappedFile) return (const char*) (dw->mappedFile + offset);
+ // ===[ HELPERS ]===
+ 
++// Returns the null-terminated string at an absolute file offset. Strings normally sit in the pre-loaded STRG buffer;
++// data files made with font tools also point into other chunks, so those are copied out of the data the reader has loaded.
++static const char* resolveString(BinaryReader* reader, DataWin* dw, size_t offset) {
++    if (offset >= dw->strgBufferBase && offset - dw->strgBufferBase < dw->strgBufferSize) {
++        return (const char*) (dw->strgBuffer + (offset - dw->strgBufferBase));
++    }
 +
 +    bool inBuffer = reader->buffer != nullptr && offset >= reader->bufferBase && offset - reader->bufferBase < reader->bufferSize;
 +    if (!inBuffer) {
-+        logError("String pointer 0x%X points outside the STRG chunk and outside the loaded data\n", offset);
++        logError("String pointer 0x%zX points outside the STRG chunk and outside the loaded data\n", offset);
 +        return "";
 +    }
 +
@@ -24,18 +28,17 @@ index 97e354c..fa98d67 100644
 +    return copy;
 +}
 +
+ // Reads a uint32 absolute file offset, resolves it into the pre-loaded STRG buffer,
+ // and returns a pointer to the null-terminated string content at that offset.
  static const char* readStringPtr(BinaryReader* reader, DataWin* dw) {
      uint32_t offset = BinaryReader_readUint32(reader);
      if (offset == 0) return nullptr;
 -    return (const char*) (dw->strgBuffer + (offset - dw->strgBufferBase));
-+    if (offset >= dw->strgBufferBase && offset - dw->strgBufferBase < dw->strgBufferSize) {
-+        return (const char*) (dw->strgBuffer + (offset - dw->strgBufferBase));
-+    }
-+    return readStringOutsideStrg(reader, dw, offset);
++    return resolveString(reader, dw, offset);
  }
  
  // Reads a pointer list header: count + absolute-offset pointers.
-@@ -1411,6 +1432,12 @@ static void parseFONT(BinaryReader* reader, DataWin* dw) {
+@@ -1411,6 +1433,12 @@ static void parseFONT(BinaryReader* reader, DataWin* dw) {
  
                  // Kerning SimpleListShort (uint16 count)
                  glyph->kerningCount = BinaryReader_readUint16(reader);
@@ -48,21 +51,16 @@ index 97e354c..fa98d67 100644
                  if (glyph->kerningCount > 0) {
                      glyph->kerning = (KerningPair *)safeMalloc(glyph->kerningCount * sizeof(KerningPair));
                      for (uint16_t k = 0; glyph->kerningCount > k; k++) {
-@@ -2610,7 +2637,12 @@ static void parseSTRG(BinaryReader* reader, DataWin* dw) {
+@@ -2610,7 +2638,7 @@ static void parseSTRG(BinaryReader* reader, DataWin* dw) {
          if (ptrs[i] == 0) continue;
          // Pointer table points to the string's length prefix.
          // The actual string content starts 4 bytes after.
 -        s->strings[i] = (const char*)(dw->strgBuffer + (ptrs[i] + 4 - dw->strgBufferBase));
-+        uint32_t contentOffset = ptrs[i] + 4;
-+        if (contentOffset >= dw->strgBufferBase && contentOffset - dw->strgBufferBase < dw->strgBufferSize) {
-+            s->strings[i] = (const char*)(dw->strgBuffer + (contentOffset - dw->strgBufferBase));
-+        } else {
-+            s->strings[i] = readStringOutsideStrg(reader, dw, contentOffset);
-+        }
++        s->strings[i] = resolveString(reader, dw, (size_t) ptrs[i] + 4);
      }
      free(ptrs);
  }
-@@ -2895,6 +2927,7 @@ DataWin* DataWin_parse(const char* filePath, DataWinParserOptions options) {
+@@ -2895,6 +2923,7 @@ DataWin* DataWin_parse(const char* filePath, DataWinParserOptions options) {
  
          if (options.parseStrg && memcmp(chunkName, "STRG", 4) == 0) {
              dw->strgBufferBase = chunkDataStart;
@@ -70,7 +68,7 @@ index 97e354c..fa98d67 100644
              if (dw->mappedFile)
                  dw->strgBuffer = dw->mappedFile + chunkDataStart;
              else
-@@ -3341,6 +3374,11 @@ void DataWin_free(DataWin* dw) {
+@@ -3341,6 +3370,11 @@ void DataWin_free(DataWin* dw) {
          free(dw->audo.entries);
      }
  
