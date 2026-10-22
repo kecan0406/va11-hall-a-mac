@@ -12,6 +12,9 @@ DATA_DIR="${VA11_DATA_DIR:-$HOME/Library/Application Support/$DATA_DIR_NAME}"
 STEAM_RESOURCES="${VA11_STEAM_RESOURCES:-}"
 DROPLET_BASENAME="VA-11 Hall-A Install Translation.app"
 RELEASE_BASE="${VA11_RELEASE_URL:-https://github.com/$REPO/releases/latest/download}"
+# Steam's own copy of Valve's library, which the runner needs for achievements. It is copied into the app, so the
+# release doesn't carry it.
+STEAM_API="${VA11_STEAM_API:-$HOME/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/Frameworks/Steam Helper.app/Contents/MacOS/libsteam_api.dylib}"
 
 RUNNER_SRC=""
 LAUNCHER_SRC=""
@@ -192,6 +195,9 @@ make_app() {
   mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
   cp "$RUNNER_SRC" "$APP/Contents/MacOS/butterscotch"
   chmod 755 "$APP/Contents/MacOS/butterscotch"
+  if [ -f "$STEAM_API" ]; then
+    cp "$STEAM_API" "$APP/Contents/MacOS/libsteam_api.dylib" || warn "Steam's libsteam_api.dylib wasn't copied"
+  fi
   cp "$STEAM_RESOURCES/icon.icns" "$APP/Contents/Resources/icon.icns" || warn "the game's icon wasn't copied"
   cp "$INSTALLER_SRC" "$APP/Contents/Resources/install.sh"
   chmod 755 "$APP/Contents/Resources/install.sh"
@@ -493,7 +499,7 @@ remove_pack() {
 }
 
 do_doctor() {
-  local game runner state="n/a" app_state="not installed" pack="none"
+  local game runner state="n/a" app_state="not installed" pack="none" achievements
   game="${STEAM_RESOURCES:-$(find_steam_resources || true)}"
   echo "macOS:         $(sw_vers -productVersion) ($(uname -m))"
   echo "Steam folder:  $HOME/Library/Application Support/Steam $([ -d "$HOME/Library/Application Support/Steam" ] && echo '(found)' || echo '(not found)')"
@@ -512,9 +518,14 @@ do_doctor() {
     app_state="installed, version $(cat "$APP/Contents/Resources/VERSION" 2>/dev/null || echo unknown)"
   fi
   if [ -e "$OVERRIDES/data.win" ]; then pack="installed (data.win in $OVERRIDES)"; fi
+  if [ -f "$APP/Contents/MacOS/libsteam_api.dylib" ]; then achievements="on"
+  elif [ -f "$STEAM_API" ]; then achievements="off (run the installer again to turn them on)"
+  else achievements="off (Steam's libsteam_api.dylib not found: $STEAM_API)"
+  fi
   echo "App:           $app_state ($APP)"
   echo "Play button:   $state"
   echo "Translation:   $pack"
+  echo "Achievements:  $achievements"
   echo "Pack app:      $([ -d "$DROPLET" ] && echo installed || echo 'not installed') ($DROPLET)"
   echo "Saves:         $DATA_DIR/saves"
   case "$app_state" in
@@ -539,6 +550,11 @@ do_install() {
   prepare_payload
   make_app
   say "  Installed: $APP"
+  if [ -f "$APP/Contents/MacOS/libsteam_api.dylib" ]; then
+    say "  Steam achievements: on"
+  else
+    warn "Steam achievements are off: I can't find the Steam file they need ($STEAM_API). Update Steam, then run this again."
+  fi
   make_droplet && say "  Created:   $DROPLET"
   step 4 5 "Connecting Steam's Play button"
   local connected=0

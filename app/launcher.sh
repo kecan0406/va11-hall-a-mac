@@ -59,4 +59,11 @@ if [ -n "${VA11_PREPARE_ONLY:-}" ]; then
   exit 0
 fi
 
+# Steam records achievements for the app ID in SteamAppId. Unless whoever started the app set it, it comes from the
+# game's options.ini (SteamAppId="447530", with Windows line endings).
+if [ -z "${SteamAppId:-}" ]; then
+  SteamAppId="$(tr -d '\r"' < "$STEAM_RES/options.ini" 2>/dev/null | sed -n 's/^SteamAppId=\([0-9][0-9]*\)$/\1/p' | head -1)"
+  [ -n "$SteamAppId" ] && export SteamAppId
+fi
+
 exec -a "VA-11 Hall-A" "$RUNNER" "$@" "$GAME"

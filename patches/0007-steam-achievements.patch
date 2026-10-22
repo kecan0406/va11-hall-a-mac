@@ -1,0 +1,195 @@
+diff --git a/src/loop.c b/src/loop.c
+index 97dc6a0..6f8c325 100644
+--- a/src/loop.c
++++ b/src/loop.c
+@@ -3,6 +3,7 @@
+ #include "data_win.h"
+ #include "vm.h"
+ #include "loop.h"
++#include "steamworks.h"
+ 
+ #include "platformdefs.h"
+ #include "stdio_compat.h"
+@@ -997,6 +998,9 @@ int loop(CommandLineArgs args, const char *argv0) {
+         Runner_setGameArgs(runner, currentGameArgs, (int32_t) arrlen(currentGameArgs));
+         platformInitFunctions(runner);
+ 
++        // Before the first game event: the game may ask about an achievement from its first frame.
++        Steamworks_init();
++
+         // Set up input recording/playback (both can be active: playback then continue recording)
+         if (args.playbackInputsPath != nullptr) {
+             globalInputRecording = InputRecording_createPlayer(args.playbackInputsPath, args.recordInputsPath);
+@@ -1081,6 +1085,7 @@ int loop(CommandLineArgs args, const char *argv0) {
+                 shouldWindowClose = true;
+                 continue;
+             }
++            Steamworks_runCallbacks();
+             
+             if (RunnerKeyboard_checkPressed(runner->keyboard, VK_F8)) {
+                 bool isPaused = Runner_isPaused(runner);
+@@ -1520,6 +1525,7 @@ int loop(CommandLineArgs args, const char *argv0) {
+ 
+         // Keep the window + GL context alive across game_change so we don't spawn a new window
+         if (actuallyShuttingDown) {
++            Steamworks_shutdown();
+             platformExit();
+             platformInitialized = false;
+         }
+diff --git a/src/steamworks.c b/src/steamworks.c
+new file mode 100644
+index 0000000..1e8f37b
+--- /dev/null
++++ b/src/steamworks.c
+@@ -0,0 +1,86 @@
++#include "steamworks.h"
++#include "common.h"
++#include "log.h"
++
++#ifdef __APPLE__
++#include <dlfcn.h>
++#include <stdint.h>
++
++// Valve's flat C API, as declared in steam_api_flat.h of the Steamworks SDK. The library is opened at run time, so the
++// runner neither links against it nor needs it to start.
++static struct {
++    void* userStats;
++    void (*runCallbacks)(void);
++    void (*shutdown)(void);
++    bool (*getAchievement)(void* userStats, const char* name, bool* achieved);
++    bool (*setAchievement)(void* userStats, const char* name);
++    bool (*storeStats)(void* userStats);
++} steam;
++
++void Steamworks_init(void) {
++    if (steam.userStats != nullptr) return;
++
++    void* library = dlopen("@executable_path/libsteam_api.dylib", RTLD_NOW | RTLD_LOCAL);
++    if (library == nullptr) {
++        logInfo("Steam: no libsteam_api.dylib next to the runner, achievements are off\n");
++        return;
++    }
++
++    int32_t (*initFlat)(char* errorMessage) = dlsym(library, "SteamAPI_InitFlat");
++    void* (*getUserStats)(void) = dlsym(library, "SteamAPI_SteamUserStats_v013");
++    steam.runCallbacks = dlsym(library, "SteamAPI_RunCallbacks");
++    steam.shutdown = dlsym(library, "SteamAPI_Shutdown");
++    steam.getAchievement = dlsym(library, "SteamAPI_ISteamUserStats_GetAchievement");
++    steam.setAchievement = dlsym(library, "SteamAPI_ISteamUserStats_SetAchievement");
++    steam.storeStats = dlsym(library, "SteamAPI_ISteamUserStats_StoreStats");
++    if (initFlat == nullptr || getUserStats == nullptr || steam.runCallbacks == nullptr || steam.shutdown == nullptr ||
++        steam.getAchievement == nullptr || steam.setAchievement == nullptr || steam.storeStats == nullptr) {
++        logInfo("Steam: this libsteam_api.dylib lacks a function the runner uses, achievements are off\n");
++        return;
++    }
++
++    // Steam reads the app ID from the SteamAppId environment variable, which the launcher sets.
++    char message[1024] = {0};
++    if (initFlat(message) != 0) {
++        logInfo("Steam: not connected (%s), achievements are off\n", message);
++        return;
++    }
++    steam.userStats = getUserStats();
++    if (steam.userStats == nullptr) {
++        logInfo("Steam: connected without achievements\n");
++        steam.shutdown();
++        return;
++    }
++    logInfo("Steam: connected, achievements are on\n");
++}
++
++void Steamworks_runCallbacks(void) {
++    if (steam.userStats != nullptr) steam.runCallbacks();
++}
++
++void Steamworks_shutdown(void) {
++    if (steam.userStats == nullptr) return;
++    steam.shutdown();
++    steam.userStats = nullptr;
++}
++
++bool Steamworks_getAchievement(const char* name) {
++    bool achieved = false;
++    return steam.userStats != nullptr && steam.getAchievement(steam.userStats, name, &achieved) && achieved;
++}
++
++// StoreStats is what sends the unlock to Steam; until then it only exists in this process.
++void Steamworks_setAchievement(const char* name) {
++    if (steam.userStats == nullptr || !steam.setAchievement(steam.userStats, name) || !steam.storeStats(steam.userStats)) return;
++    logInfo("Steam: achievement %s unlocked\n", name);
++}
++
++#else
++
++void Steamworks_init(void) {}
++void Steamworks_runCallbacks(void) {}
++void Steamworks_shutdown(void) {}
++bool Steamworks_getAchievement(MAYBE_UNUSED const char* name) { return false; }
++void Steamworks_setAchievement(MAYBE_UNUSED const char* name) {}
++
++#endif
+diff --git a/src/steamworks.h b/src/steamworks.h
+new file mode 100644
+index 0000000..9a10216
+--- /dev/null
++++ b/src/steamworks.h
+@@ -0,0 +1,15 @@
++#ifndef _BS_STEAMWORKS_H_
++#define _BS_STEAMWORKS_H_
++
++#include <stdbool.h>
++
++// Steam achievements through the libsteam_api.dylib next to the runner. Without that file, or without Steam running,
++// every call does nothing and the game plays the same.
++void Steamworks_init(void);
++void Steamworks_runCallbacks(void);
++void Steamworks_shutdown(void);
++
++bool Steamworks_getAchievement(const char* name);
++void Steamworks_setAchievement(const char* name);
++
++#endif /* _BS_STEAMWORKS_H_ */
+diff --git a/src/vm_builtins.c b/src/vm_builtins.c
+index 488d09a..27fb1b3 100644
+--- a/src/vm_builtins.c
++++ b/src/vm_builtins.c
+@@ -38,6 +38,7 @@
+ #include "sha1.h"
+ #include "base64.h"
+ #include "gettime.h"
++#include "steamworks.h"
+ #include "miniz.h"
+ 
+ #if defined(__GNUC__) || defined(__clang__)
+@@ -7686,6 +7687,22 @@ STUB_RETURN_UNDEFINED(steam_file_write)
+ STUB_RETURN_UNDEFINED(steam_file_read)
+ STUB_RETURN_ZERO(steam_get_persona_name)
+ 
++static RValue builtin_steam_get_achievement(VMContext* ctx, RValue* args, int32_t argCount) {
++    REQUIRE_ARGC_AT_LEAST("steam_get_achievement", 1, RValue_makeBool(false));
++    char* name = RValue_toString(args[0], ctx->runner->dataWin);
++    bool achieved = Steamworks_getAchievement(name);
++    free(name);
++    return RValue_makeBool(achieved);
++}
++
++static RValue builtin_steam_set_achievement(VMContext* ctx, RValue* args, int32_t argCount) {
++    REQUIRE_ARGC_AT_LEAST("steam_set_achievement", 1, RValue_makeUndefined());
++    char* name = RValue_toString(args[0], ctx->runner->dataWin);
++    Steamworks_setAchievement(name);
++    free(name);
++    return RValue_makeUndefined();
++}
++
+ // ===[ fmod extension functions ]===
+ 
+ #ifdef ENABLE_FMOD
+@@ -24731,6 +24748,8 @@ void VMBuiltins_registerAll(VMContext* ctx) {
+     VM_registerBuiltin(ctx, "steam_file_write", builtin_steam_file_write);
+     VM_registerBuiltin(ctx, "steam_file_read", builtin_steam_file_read);
+     VM_registerBuiltin(ctx, "steam_get_persona_name", builtin_steam_get_persona_name);
++    VM_registerBuiltin(ctx, "steam_get_achievement", builtin_steam_get_achievement);
++    VM_registerBuiltin(ctx, "steam_set_achievement", builtin_steam_set_achievement);
+ 
+     // Audio
+     VM_registerBuiltin(ctx, "audio_system_is_available", builtin_audio_system_is_available);

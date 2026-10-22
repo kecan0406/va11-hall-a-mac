@@ -22,7 +22,8 @@ published release instead of your build.
 
 `build.sh` fetches Butterscotch at a pinned commit (`BUTTERSCOTCH_COMMIT` in `build.sh`), applies the patches in
 `patches/` and builds the runner. `install.sh` wraps the runner in an app bundle with a small launcher and replaces one
-file in the game's Steam folder so the Play button starts it.
+file in the game's Steam folder so the Play button starts it. For achievements it copies Steam's own
+`libsteam_api.dylib` into the app, so the release carries no Valve file.
 
 | Patch | What it fixes |
 |---|---|
@@ -32,6 +33,7 @@ file in the game's Steam folder so the Play button starts it.
 | `0004` fullscreen | Implements the fullscreen functions the game's options menu uses. |
 | `0005` room warp | Lets a recording jump into a room the game only enters through its own logic. Test aid only. |
 | `0006` data files | Loads data files whose fonts and strings sit outside their own chunks, as fan translations built with font tools have. |
+| `0007` achievements | Unlocks Steam achievements through the `libsteam_api.dylib` next to the runner. Without that file the game runs as before. |
 
 These are fixes to Butterscotch, not to the game.
 

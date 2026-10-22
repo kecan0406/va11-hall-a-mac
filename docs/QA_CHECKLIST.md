@@ -64,6 +64,7 @@ to share a session as a test, start it with `--record-inputs my_session.json` (s
 - [ ] Steam shows the game as running, and goes back to Play when you quit
 - [ ] The game is in front and takes keyboard and mouse input straight away
 - [ ] The Steam shortcut in `~/Applications` (if you made one) starts the game too
+- [ ] An achievement you earn shows up on the game's page in Steam (`--doctor` says `Achievements: on`)
 - [ ] After "Verify integrity of game files", `--doctor` says the Play button isn't connected and running the install line again brings it back
 - [ ] `--uninstall` makes Play fail again as it did before and removes the two apps; running the install line again brings everything back
 
@@ -78,4 +79,4 @@ to share a session as a test, start it with `--record-inputs my_session.json` (s
 
 - [ ] A game controller works, if you have one
 - [ ] Quit from the game's Exit button ends the process (no stuck dock icon)
-- [ ] Known gaps still behave as documented: F12 saves nothing, achievements aren't recorded
+- [ ] Known gaps still behave as documented: F12 saves nothing

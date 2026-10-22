@@ -11,10 +11,12 @@ DATA="$WORK/data"
 OVERRIDES="$DATA/overrides"
 mkdir -p "$STEAM/scripts/eng" "$STEAM/scripts/jp" "$STEAM/scripts/chn" "$STEAM/answer" "$STEAM/English.lproj" "$WORK/runner"
 for f in game.ios options.ini icon.icns scripts/eng/a.txt scripts/jp/a.txt scripts/chn/a.txt answer/Her.png; do echo "$f" > "$STEAM/$f"; done
+printf '[Mac]\r\nDisplayName="VA-11 Hall-A"\r\nSteamAppId="447530"\r\n' > "$STEAM/options.ini"
 
 cat > "$WORK/runner/butterscotch" <<'EOF'
 #!/bin/bash
 printf '%s\n' "$@" > "$RUNNER_LOG"
+printf '%s\n' "${SteamAppId-unset}" > "$RUNNER_LOG.appid"
 EOF
 chmod +x "$WORK/runner/butterscotch"
 
@@ -61,6 +63,9 @@ launch
 check "override removed: back to the Steam game file" '[ "$(tail -1 "$RUNNER_LOG")" = "$DATA/game.ios" ]'
 check "override removed: no stale data.win link" '[ ! -e "$DATA/data.win" ] && [ ! -L "$DATA/data.win" ]'
 check "override removed: scripts is linked to Steam again" '[ -L "$DATA/scripts" ] && [ "$(cat "$DATA/scripts/eng/a.txt")" = scripts/eng/a.txt ]'
+
+check "Steam app ID: taken from the game's options.ini" '[ "$(cat "$RUNNER_LOG.appid")" = 447530 ]'
+check "Steam app ID: one already set is kept" 'SteamAppId=123 "$LAUNCHER" >/dev/null 2>&1; [ "$(cat "$RUNNER_LOG.appid")" = 123 ]'
 
 check "prepare only: prints the game file and doesn't start the runner" '
   rm -f "$RUNNER_LOG"

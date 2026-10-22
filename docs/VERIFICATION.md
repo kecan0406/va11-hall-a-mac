@@ -43,11 +43,10 @@ on 1x and 2x displays, and the scenario compiler. Scenarios are described in [SC
 
 Apple Silicon, macOS 27.2, runner built from Butterscotch `54e10ec` plus the patches in `patches/`.
 
-- **Static coverage**: the game references 443 functions; 419 are implemented (94.6%), which covers 98.7% of the call
-  sites (14,212 of 14,393). Of the 24 that aren't, 18 have no static path from any game event (dead code in the game's
-  bundled file-system library). The other 6 are known and explained: Steam achievements (`steam_get_achievement`,
-  `steam_set_achievement`), the F12 screenshot (`screen_save`, `steam_send_screenshot`), and two one-time startup calls
-  (`FS_set_gm_save_area`, `FS_set_working_directory`).
+- **Static coverage**: the game references 443 functions; 421 are implemented (95.0%), which covers 99.5% of the call
+  sites (14,322 of 14,393). Of the 22 that aren't, 18 have no static path from any game event (dead code in the game's
+  bundled file-system library). The other 4 are known and explained: the F12 screenshot (`screen_save`,
+  `steam_send_screenshot`), and two one-time startup calls (`FS_set_gm_save_area`, `FS_set_working_directory`).
 - **Audio**: 120 of 120 sounds decode. 32 of them (27%) are Ogg files with a video stream mixed in; **without patch 0001
   all 32 fail** (checked with the same harness and the demuxer bypassed).
 - **Mouse**: with the old code the hand cursor drew at `(322, 602)` when the real cursor was at game position
@@ -61,7 +60,7 @@ Apple Silicon, macOS 27.2, runner built from Butterscotch `54e10ec` plus the pat
 - **A translated game** (a fan translation from April 2017 that replaces `data.win` and `scripts/eng`, applied through
   `overrides/`): the runner could not load it at all before patch 0006 (the font parser read garbage kerning counts, then
   string pointers outside the string chunk crashed it). With the patch every check passes on it as well: 302 functions
-  referenced, 276 implemented (98.6% of call sites), 120 of 120 sounds decode, the golden path takes the same 10 room
+  referenced, 278 implemented (99.4% of call sites), 120 of 120 sounds decode, the golden path takes the same 10 room
   changes, all 45 rooms of that older version are entered, and replays are identical. It is an older build of the game,
   so the numbers differ from the Steam version's.
 - **Steam's Play button** (connected by the installer): Steam's log showed the original `Mac_Runner` failing with
@@ -71,8 +70,13 @@ Apple Silicon, macOS 27.2, runner built from Butterscotch `54e10ec` plus the pat
   right after the hook was installed (`OS Error 256`, LaunchServices `-10669`) and did not come back in 7 further
   attempts, including 2 that repeated the same sequence (failed Play, hook, Play). The installer now also refreshes
   LaunchServices' record of the bundle, which is the suspected cause; that this fixes it could not be shown.
+- **Steam achievements** (patch 0007, with Steam running and the `libsteam_api.dylib` the installer copies from it): the
+  runner connected (`Steam: connected, achievements are on` in its log), and a small program making the same calls read
+  the state of all 34 of the game's achievements on a real account. The names the game unlocks, in the Steam build and
+  in the translated one, are exactly the 34 Steam has. Not shown: an unlock itself, which needs someone to earn one in
+  play.
 
-- **The installer** (`tests/install_test.sh`, 49 checks, and `tests/release_test.sh`, 8 checks on the real release
+- **The installer** (`tests/install_test.sh`, 56 checks, and `tests/release_test.sh`, 8 checks on the real release
   archive): install, install again, undo and uninstall leave Steam's folder byte-identical to before; the whole install
   runs with only tools every Mac has (a run with `unzip` taken away fails, so the check can fail); it works when piped
   into `bash` like `curl | bash`; a damaged or missing download is refused and nothing is installed; macOS versions too old

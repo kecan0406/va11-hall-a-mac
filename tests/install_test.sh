@@ -14,6 +14,7 @@ APP_DIR="$WORK/it's here/Applications"
 APP="$APP_DIR/VA-11 Hall-A (native).app"
 DATA="$WORK/data"
 FAKE_RUNNER="$WORK/fake_butterscotch"
+STEAM_API="$WORK/steam/Steam.AppBundle/libsteam_api.dylib"
 
 mkdir -p "$RESOURCES/scripts/eng" "$RESOURCES/scripts/jp" "$RESOURCES/answer" "$BUNDLE/MacOS"
 for f in game.ios icon.icns options.ini scripts/eng/a.txt scripts/jp/a.txt answer/x.png; do echo "$f" > "$RESOURCES/$f"; done
@@ -24,8 +25,9 @@ cat > "$FAKE_RUNNER" <<'EOF'
 { echo "pid=$$"; printf 'arg=%s\n' "$@"; } > "$RUNNER_LOG"
 EOF
 chmod 755 "$FAKE_RUNNER"
+mkdir -p "$(dirname "$STEAM_API")" && echo "steam api" > "$STEAM_API"
 
-export VA11_STEAM_RESOURCES="$RESOURCES" VA11_APP_DIR="$APP_DIR" VA11_DATA_DIR="$DATA" VA11_NO_DIALOG=1
+export VA11_STEAM_RESOURCES="$RESOURCES" VA11_APP_DIR="$APP_DIR" VA11_DATA_DIR="$DATA" VA11_NO_DIALOG=1 VA11_STEAM_API="$STEAM_API"
 export RUNNER_LOG="$WORK/runner.log"
 
 failures=0
@@ -55,6 +57,8 @@ install >"$WORK/install.out" 2>&1
 check "install: finishes and says what to do next" 'grep -q "All set" "$WORK/install.out" && grep -q "press Play" "$WORK/install.out"'
 check "install: the app has its launcher, runner, icon and version" '
   [ -x "$APP/Contents/MacOS/VA-11 Hall-A" ] && [ -x "$APP/Contents/MacOS/butterscotch" ] && [ -f "$APP/Contents/Resources/icon.icns" ] && [ "$(cat "$APP/Contents/Resources/VERSION")" = dev ]'
+check "install: Steam's library for achievements is copied into the app" '
+  cmp -s "$STEAM_API" "$APP/Contents/MacOS/libsteam_api.dylib" && grep -q "achievements: on" "$WORK/install.out"'
 check "install: Info.plist is valid" 'plutil -lint "$APP/Contents/Info.plist" >/dev/null'
 check "install: the app is signed" 'codesign --verify "$APP" 2>/dev/null'
 check "install: the app starts the runner with the game file" '
@@ -81,6 +85,11 @@ check "again after Steam restored its file: connected again, backup refreshed" '
 mkdir -p "$DATA/saves" && echo progress > "$DATA/saves/slot1.txt"
 install >/dev/null 2>&1
 check "again: saves untouched" '[ "$(cat "$DATA/saves/slot1.txt")" = progress ]'
+
+check "again without Steam's library: installs, and says achievements are off" '
+  out="$(VA11_STEAM_API="$WORK/nowhere.dylib" install 2>&1)"
+  echo "$out" | grep -q "All set" && echo "$out" | grep -q "achievements are off" && [ ! -e "$APP/Contents/MacOS/libsteam_api.dylib" ]'
+install >/dev/null 2>&1
 
 mv "$APP/Contents/MacOS/VA-11 Hall-A" "$WORK/launcher.gone"
 check "app missing when Play is pressed: exits with an error" '! "$RUNNER" >/dev/null 2>&1'
@@ -223,7 +232,8 @@ check "tools: the installed app starts with only those" '
 
 echo "== doctor"
 check "doctor: reports app, Play button and translation" '
-  out="$("$INSTALL" --doctor 2>&1)"; echo "$out" | grep -q "App: *installed, version 9.9.9" && echo "$out" | grep -q "Play button: *connected" && echo "$out" | grep -q "Translation: *none"'
+  out="$("$INSTALL" --doctor 2>&1)"; echo "$out" | grep -q "App: *installed, version 9.9.9" && echo "$out" | grep -q "Play button: *connected" && echo "$out" | grep -q "Translation: *none" &&
+  echo "$out" | grep -q "Achievements: *off (run the installer again"'
 
 "$INSTALL" --uninstall >/dev/null 2>&1
 check "in the end the Steam folder is exactly as it was" '[ "$(steam_listing)" = "$AFTER_UNINSTALL" ]'
