@@ -67,6 +67,13 @@ Apple Silicon, macOS 27.2, runner built from Butterscotch `54e10ec` plus the pat
   keystrokes were lost. That happened in every launch of a bare build and in 1 of 2 launches from the app bundle; the
   released app got the keyboard in 4 of 4. With the fix, 3 of 3 launches from the app bundle took the keyboard and hid
   the arrow.
+- **Draw order** (patch 0010): the bartending buttons (Slot 1, Slot 2, Reset, Mix) had no labels, in the Steam build
+  and in the translated one. The labels are written by an instance created before the buttons, at the same depth, and
+  the runner drew the newer instance on top. Which one GameMaker draws on top depends on the build the game was made
+  with: OpenGM measured newer on top for build 1539 (Undertale) and older on top for 9999; this game's data files say
+  1749 (translation) and 1757 (Steam), and only older on top shows its labels. With the patch they show. A screenshot
+  every 45 to 60 frames of every scenario, on both builds, with and without the patch: the only changes are in the
+  bartending panel.
 - **Determinism**: every scenario, replayed twice, gives identical room sequences and byte-identical screenshots.
 - **Input round trip**: replaying a click while recording gives back the same events on the same frames.
 - **A translated game** (a fan translation from April 2017 that replaces `data.win` and `scripts/eng`, applied through

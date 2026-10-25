@@ -36,6 +36,7 @@ file in the game's Steam folder so the Play button starts it. For achievements i
 | `0007` achievements | Unlocks Steam achievements through the `libsteam_api.dylib` next to the runner. Without that file the game runs as before. |
 | `0008` options menu | Clicks were tested against an object's whole sprite instead of its collision rect. The options menu's video rows are full-panel sprites stacked at one position, so one click pressed all of them: turning scanlines on also switched to fullscreen. |
 | `0009` cursor | The system cursor showed next to the game's own hand. The game's "Display cursor" option is off, so the cursor is now hidden over the game, and only there: the title bar and other windows keep it. |
+| `0010` draw order | Of two instances at the same depth, the newer was drawn on top; the GameMaker version this game was built with draws the older one on top. The bartending buttons (Slot 1, Slot 2, Reset, Mix) are created after the instance that writes their labels, so the labels were hidden. |
 
 These are fixes to Butterscotch, not to the game.
 

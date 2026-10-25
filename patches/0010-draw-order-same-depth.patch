@@ -1,0 +1,38 @@
+diff --git a/src/runner.c b/src/runner.c
+index 3431794..3f4ba61 100644
+--- a/src/runner.c
++++ b/src/runner.c
+@@ -688,6 +688,12 @@ typedef struct {
+     int32_t elementOrder;
+ } DrawKey;
+ 
++// Which of two instances at the same depth GameMaker draws on top depends on its build: 1539 (Undertale) draws the
++// newer one on top, 1749 and 1757 (VA-11 Hall-A) the older one. That game counts on it: the bartending buttons are
++// created after the instance that writes their labels, at the same depth, so drawing the newer one on top hid the
++// labels. Set by Runner_create.
++static bool olderInstancesOnTop = false;
++
+ static DrawKey drawableKey(const Drawable* d) {
+     DrawKey k = { d->depth, d->type, 0, d->layerOrder, d->elementOrder };
+     switch (d->type) {
+@@ -716,8 +722,10 @@ static int compareDrawKeys(const DrawKey* a, const DrawKey* b) {
+     if (a->type == DRAWABLE_TILE)
+         return (a->order > b->order) - (a->order < b->order); // tiles: higher index later
+ 
+-    if (a->type == DRAWABLE_INSTANCE)
+-        return (a->order > b->order) - (a->order < b->order); // instances: newer (higher id) on top
++    if (a->type == DRAWABLE_INSTANCE) {
++        int newerOnTop = (a->order > b->order) - (a->order < b->order); // instances: newer (higher id) on top
++        return olderInstancesOnTop ? -newerOnTop : newerOnTop;
++    }
+ 
+     return (a->order < b->order) - (a->order > b->order); // layer/particle: higher first
+ }
+@@ -2547,6 +2555,7 @@ Runner* Runner_create(DataWin* dataWin, VMContext* vm, Renderer* renderer, FileS
+ 
+     Runner* runner = (Runner *)safeCalloc(1, sizeof(Runner));
+     runner->dataWin = dataWin;
++    olderInstancesOnTop = DataWin_isVersionAtLeast(dataWin, 1, 0, 0, 1749) && DataWin_isVersionOlder(dataWin, 2, 0, 0, 0);
+     runner->vmContext = vm;
+     runner->renderer = renderer;
+     runner->fileSystem = fileSystem;
