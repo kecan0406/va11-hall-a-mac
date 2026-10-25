@@ -253,7 +253,7 @@ def audio(ctx, report):
 
 def parse_scenario(path):
     meta = {"name": path.stem, "shots": [], "debug": False, "roundtrip": False, "rooms": None, "rooms_visit": None,
-            "exit": None, "speed": 8, "seed": 1}
+            "events": [], "exit": None, "speed": 8, "seed": 1}
     for line in path.read_text().splitlines():
         m = re.match(r"@(\S+)\s*(.*)$", line)
         if not m:
@@ -271,6 +271,8 @@ def parse_scenario(path):
             meta["rooms"] = rest
         elif key == "rooms-visit":
             meta["rooms_visit"] = rest
+        elif key == "events":
+            meta["events"].append((rest[0], {obj: int(n) for obj, n in (p.split("=") for p in rest[1:])}))
         elif key in ("speed", "seed"):
             meta[key] = int(rest[0])
     if meta["exit"] is None:
@@ -293,6 +295,8 @@ def play(ctx, meta, scn, work, record_to=None):
             cmd.append("--debug")
         if record_to:
             cmd += ["--record-inputs", str(record_to)]
+        for event in sorted({event for event, _ in meta["events"]}):
+            cmd += ["--trace-events", event]
         if meta["shots"]:
             cmd += ["--screenshot", str(work / "shot_%d.png")]
             for frame, _ in meta["shots"]:
@@ -303,6 +307,9 @@ def play(ctx, meta, scn, work, record_to=None):
         shutil.rmtree(sandbox, ignore_errors=True)
 
     rooms = re.findall(r"Room changed: \S+ \(room \d+\) -> (\S+) \(room \d+\)", log)
+    events = {}
+    for obj, event in re.findall(r"^Runner: \[(\S+)\] (\S+) \(instanceId=", log, re.M):
+        events[(event, obj)] = events.get((event, obj), 0) + 1
     warnings = [l for l in log.splitlines() if l.startswith("Warning:")]
     errors = [l for l in log.splitlines() if ERROR_LINE.search(l) and not l.startswith("Warning: VM:")]
     shots = {}
@@ -310,7 +317,8 @@ def play(ctx, meta, scn, work, record_to=None):
         png = work / ("shot_%d.png" % frame)
         shots[label] = sha256(png) if png.exists() and png.stat().st_size > 0 else None
     (work / "log.txt").write_text(log)
-    return {"code": code, "timed_out": timed_out, "rooms": rooms, "warnings": warnings, "errors": errors, "shots": shots}
+    return {"code": code, "timed_out": timed_out, "rooms": rooms, "events": events, "warnings": warnings, "errors": errors,
+            "shots": shots}
 
 
 def judge_warnings(warnings, allow):
@@ -361,6 +369,11 @@ def scenarios(ctx, report, visited_rooms):
             absent = sorted(set(meta["rooms_visit"]) - set(first["rooms"]))
             if absent:
                 failures.append("rooms never entered: " + " ".join(absent))
+        for event, want in meta["events"]:
+            for obj, n in want.items():
+                got = first["events"].get((event, obj), 0)
+                if got != n:
+                    failures.append("%s on %s ran %d times, want %d" % (event, obj, got, n))
         visited_rooms.update(first["rooms"])
 
         if first["rooms"] != second["rooms"]:

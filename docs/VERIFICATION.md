@@ -31,6 +31,7 @@ Each row is a claim, how it is measured, and the criterion that decides pass or 
 | Smoke | The game runs without errors | Scripted play, then scan the runner's log | Exit code 0, no error line, no warning outside the allowlist |
 | Rooms | Every room loads and runs | Walk the room order, jump into the rest | The expected rooms are entered |
 | Golden path | A real game works from the title screen on | Replay a mouse-only session: the game's opening, to the first shift | The expected room sequence, in order |
+| Options menu | A click presses only the button under it | Replay clicks on two rows of Settings, log which objects receive them | Each clicked row once, the fullscreen row never |
 | Determinism | Results don't depend on timing or luck | Replay every scenario twice | Same rooms and byte-identical screenshots |
 | Regression | Nothing changed since the last known-good state | Screenshot hashes against a baseline recorded on this Mac | Equal (when a baseline exists for this Mac and runner build) |
 | Input | Recording and replay agree | Replay a click while re-recording it | Same mouse events on the same frames |
@@ -55,6 +56,17 @@ Apple Silicon, macOS 27.2, runner built from Butterscotch `54e10ec` plus the pat
 - **Rooms**: all 46 rooms are entered and run without errors: 31 by walking the room order and the golden path, the other
   15 (game over, shooting minigame, loading screens, ...) by jumping into them.
 - **Golden path**: the game's opening, played through to the first shift. 10 room changes, in the expected order.
+- **Options menu** (patch 0008): without the patch, each of the two clicks reached all three video rows (scanlines,
+  windowed and fullscreen each got the click twice), and one click on the scanline row called
+  `window_set_fullscreen(1)` then `window_set_fullscreen(0)` in the same frame: the window went fullscreen. With the
+  patch each row gets only its own click and `window_set_fullscreen` isn't called. The same on the translated game.
+- **Cursor** (patches 0009 and 0004, checked by hand: the pointer moved over the window and the screen captured with
+  the cursor drawn). In a window the system arrow showed over the game; now it is hidden there and still shows over the
+  title bar. Starting in fullscreen depended on timing: when the game went fullscreen before macOS had finished
+  activating the app, the window never got focus (logged: no key window for the whole run), so the arrow showed and
+  keystrokes were lost. That happened in every launch of a bare build and in 1 of 2 launches from the app bundle; the
+  released app got the keyboard in 4 of 4. With the fix, 3 of 3 launches from the app bundle took the keyboard and hid
+  the arrow.
 - **Determinism**: every scenario, replayed twice, gives identical room sequences and byte-identical screenshots.
 - **Input round trip**: replaying a click while recording gives back the same events on the same frames.
 - **A translated game** (a fan translation from April 2017 that replaces `data.win` and `scripts/eng`, applied through
@@ -100,6 +112,7 @@ baseline is stored per machine and not in the repository. Determinism is checked
 - **Comparison with the original runner.** Nothing here shows that the original would have drawn or behaved the same;
   it shows the game runs, consistently, without errors and with the expected flow. This is the main gap.
 - **Sound as heard.** Decoding is proven. Whether it comes out of the speakers right isn't.
+- **The system cursor.** A replay never moves the real pointer, so `verify.py` can't see it; it was checked by hand.
 - **The drink-mixing minigame.** It is dragged with the mouse and gated on game state the scripted session doesn't set
   up. The rooms load and run, but nobody has mixed a drink automatically.
 - **Rooms entered by warping** run for 150 frames each. That shows they load and don't error, not that they play.

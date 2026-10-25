@@ -1,0 +1,18 @@
+diff --git a/src/runner.c b/src/runner.c
+index cf7816e..3431794 100644
+--- a/src/runner.c
++++ b/src/runner.c
+@@ -3595,8 +3595,12 @@ static void dispatchMouseEvents(Runner* runner) {
+         Instance* inst = runner->instanceSnapshots[snapshotBase + i];
+         if (!inst->active) { isOver[i] = false; continue; }
+ 
++        // Same test as position_meeting: the collision rect, then the pixel mask for precise sprites. The sprite's whole
++        // texture is too wide: VA-11 Hall-A's options buttons are full-panel sprites stacked at one position and told
++        // apart only by their collision rects, so testing the texture pressed all of them with one click.
+         Sprite* spr = Collision_getSprite(dataWin, inst);
+-        bool over = Collision_pointInInstance(spr, inst, mx, my);
++        bool over = Collision_pointInsideInstanceBox(runner, inst, mx, my) &&
++                    (!Collision_hasFrameMasks(spr) || Collision_pointInInstance(spr, inst, mx, my));
+         isOver[i] = over;
+ 
+         // Enter / Leave (one-shot transitions)

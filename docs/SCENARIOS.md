@@ -32,6 +32,7 @@ Lines starting with `@` tell `verify.py` how to run and judge the scenario. They
 | `@shot 990 title_menu` | take a screenshot at frame 990 and call it `title_menu` |
 | `@rooms a b c` | the rooms entered, in order, must be exactly this |
 | `@rooms-visit a b c` | these rooms must all be entered, in any order |
+| `@events MouseLeftPressed a=1 b=0` | object `a` must run this event exactly once and `b` never (event names as the runner's `--trace-events` logs them) |
 | `@debug` | run with the runner's debug keys (PageUp moves to the next room) |
 | `@roundtrip` | replay while re-recording and compare the recording with the input |
 | `@speed 8`, `@seed 1` | speed multiplier and random seed (defaults 8 and 1) |
@@ -44,6 +45,9 @@ Lines starting with `@` tell `verify.py` how to run and judge the scenario. They
 - `rooms_traversal`: PageUp walks the rooms in the game's room order, 90 frames in each.
 - `rooms_warp`: after the intros, jumps into the rooms the traversal can't reach and lets each run for 150 frames.
 - `mouse_roundtrip`: one click, replayed while recording.
+- `options_menu`: opens Settings from the title menu and clicks the scanline row, then the windowed row. The video rows
+  are full-panel sprites stacked at one position, so each click must reach its own row and no other. The last `move`
+  keeps the replay going until `@exit`; once a replay runs out of input, the real mouse takes over.
 
 ## Recording your own
 

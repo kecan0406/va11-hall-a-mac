@@ -16,11 +16,13 @@ to share a session as a test, start it with `--record-inputs my_session.json` (s
 - [ ] The tracks that used to be silent play now
 - [ ] No crackling, stutter or music cutting off after a few minutes
 
-## Mouse (patch 0002)
+## Mouse (patches 0002, 0009)
 
 - [ ] The hand cursor sits exactly under the real cursor, at the top, middle and bottom of the window
 - [ ] Same after resizing the window and in fullscreen
 - [ ] Same on a non-Retina external display, and when moving the window between displays
+- [ ] Over the game only the hand shows, in a window and in fullscreen; the arrow comes back over the title bar and
+      outside the window
 
 ## Drink mixing (not covered automatically)
 
@@ -39,9 +41,11 @@ to share a session as a test, start it with `--record-inputs my_session.json` (s
 - [ ] The shooting minigame starts and is playable with mouse and keyboard
 - [ ] A game over leads back to where it should
 
-## Fullscreen and windows (patch 0004)
+## Fullscreen and windows (patches 0004, 0008)
 
 - [ ] Alt+Enter enters and leaves fullscreen; so do the options menu and Cmd+F
+- [ ] Each video row in Settings changes only its own setting: turning scanlines on or off leaves fullscreen alone
+- [ ] Started in fullscreen, the keyboard works before any click
 - [ ] After leaving fullscreen the window is back where it was
 - [ ] The game stays letterboxed (no stretching) at any window size
 

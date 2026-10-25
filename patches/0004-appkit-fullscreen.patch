@@ -1,24 +1,38 @@
 diff --git a/src/backends/appkit.m b/src/backends/appkit.m
-index e8b76cc..bc76bb5 100644
+index e8b76cc..22103d9 100644
 --- a/src/backends/appkit.m
 +++ b/src/backends/appkit.m
-@@ -380,6 +380,15 @@ static void platformSetWindowPosition(int32_t x, int32_t y) {
+@@ -380,6 +380,29 @@ static void platformSetWindowPosition(int32_t x, int32_t y) {
      [window setFrameOrigin:newOrigin];
  }
  
 +// Read from the window itself rather than kept in a variable that could drift from it.
-+static bool platformGetFullscreen(void) {
++static bool windowIsFullscreen(void) {
 +    return ([window styleMask] & NSWindowStyleMaskFullScreen) != 0;
 +}
 +
++// A window that goes fullscreen before it is key can stay without focus afterwards: keystrokes go nowhere and its cursor
++// rect is ignored. The game asks on its first frame, while macOS may still be activating the app, so a request waits
++// here until the window is key (platformHandleEvents applies it). -1 when none waits.
++static int pendingFullscreen = -1;
++
++static bool platformGetFullscreen(void) {
++    return pendingFullscreen >= 0 ? pendingFullscreen == 1 : windowIsFullscreen();
++}
++
 +static void platformSetFullscreen(bool enable) {
-+    if (enable != platformGetFullscreen()) [window toggleFullScreen:nil];
++    if (![window isKeyWindow]) {
++        pendingFullscreen = enable;
++        return;
++    }
++    pendingFullscreen = -1;
++    if (enable != windowIsFullscreen()) [window toggleFullScreen:nil];
 +}
 +
  void platformGetMousePos(double *xPos, double *yPos) {
      NSPoint mouseLocation = appkitWindowPointToViewPixels(glView, [window mouseLocationOutsideOfEventStream]);
      *xPos = mouseLocation.x;
-@@ -590,6 +599,7 @@ bool platformInit(int32_t reqW, int32_t reqH, const char *title, bool headless)
+@@ -590,6 +613,7 @@ bool platformInit(int32_t reqW, int32_t reqH, const char *title, bool headless)
  
      [window setTitle:[NSString stringWithFormat:@"%s", title]];
      [window setAcceptsMouseMovedEvents:YES];
@@ -26,7 +40,7 @@ index e8b76cc..bc76bb5 100644
  
      // Create OpenGL view
      glView =
-@@ -692,6 +702,8 @@ void platformInitFunctions(Runner *runner) {
+@@ -692,6 +716,8 @@ void platformInitFunctions(Runner *runner) {
      g_runner = runner;
      runner->windowHasFocus = windowIsFocused;
      runner->setCursor = platformSetCursor;
@@ -35,6 +49,15 @@ index e8b76cc..bc76bb5 100644
      runner->getWindowPosition = platformGetWindowPosition;
      runner->setWindowPosition = platformSetWindowPosition;
      runner->currentCursor = GML_CR_ARROW;
+@@ -722,6 +748,8 @@ bool platformHandleEvents(void)
+ 
+         [NSApp updateWindows];
+ 
++        if (pendingFullscreen >= 0 && [window isKeyWindow]) platformSetFullscreen(pendingFullscreen == 1);
++
+         if (g_runner && g_runner->gamepads) {
+             NSArray<GCController *> *controllers = [GCController controllers];
+             NSUInteger count = MIN((NSUInteger)MAX_GAMEPADS, controllers.count);
 diff --git a/src/runner.h b/src/runner.h
 index 60270be..b08bcde 100644
 --- a/src/runner.h

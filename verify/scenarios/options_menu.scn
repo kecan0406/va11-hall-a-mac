@@ -1,0 +1,18 @@
+@exit 1160
+@shot 1100 options_scanlines_on
+@events MouseLeftPressed filter_config=1 windowed_config=1 fullscreen_config=0
+
+60 move 640 336
+65 click left
+70 move 640 400
+300..990/45 click left
+
+1000 move 731 580
+1006 click left
+
+1070 move 640 486
+1080 click left
+1110 move 640 436
+1120 click left
+
+1159 move 640 436

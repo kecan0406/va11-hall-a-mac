@@ -1,0 +1,134 @@
+diff --git a/src/backends/appkit.m b/src/backends/appkit.m
+index 22103d9..10e1625 100644
+--- a/src/backends/appkit.m
++++ b/src/backends/appkit.m
+@@ -17,6 +17,7 @@ static Runner *g_runner;
+ static NSWindow *window = nil;
+ static NSOpenGLContext *glContext = nil;
+ static NSOpenGLView *glView = nil;
++static NSCursor *viewCursor = nil;
+ 
+ #define USE_PRIVATE_API 0
+ 
+@@ -258,6 +259,11 @@ static int nsKeyToGML(unsigned short keyCode)
+     return YES;
+ }
+ 
++- (void)resetCursorRects
++{
++    [self addCursorRect:[self bounds] cursor:viewCursor != nil ? viewCursor : [NSCursor arrowCursor]];
++}
++
+ - (void)updateTrackingAreas
+ {
+     [super updateTrackingAreas];
+@@ -656,46 +662,66 @@ void platformExit(void) {
+     window = nil;
+ }
+ 
++// Draws nothing: what cr_none shows, for games that draw their own cursor sprite instead.
++static NSCursor *invisibleCursor(void) {
++    static NSCursor *cursor = nil;
++    if (cursor == nil) {
++        NSBitmapImageRep *rep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL pixelsWide:16 pixelsHigh:16
++            bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO colorSpaceName:NSDeviceRGBColorSpace
++            bytesPerRow:0 bitsPerPixel:0];
++        memset([rep bitmapData], 0, (size_t)[rep bytesPerRow] * 16);
++        NSImage *image = [[NSImage alloc] initWithSize:NSMakeSize(16, 16)];
++        [image addRepresentation:rep];
++        cursor = [[NSCursor alloc] initWithImage:image hotSpot:NSZeroPoint];
++        [image release];
++        [rep release];
++    }
++    return cursor;
++}
++
++// Shown through the view's cursor rect, so it holds over the game only: the title bar, the menu bar and other windows
++// keep their own cursor. [NSCursor set] alone is undone by the next cursor update, and [NSCursor hide] hides it
++// everywhere while the app is active.
+ static void platformSetCursor(int32_t cursorType) {
+-    [NSCursor unhide];
++    NSCursor *cursor;
+     switch (cursorType) {
+         case GML_CR_DEFAULT:
+         case GML_CR_ARROW:
+-            [[NSCursor arrowCursor] set];
++            cursor = [NSCursor arrowCursor];
+             break;
+         case GML_CR_NONE:
+-            [NSCursor hide];
++            cursor = invisibleCursor();
+             break;
+         case GML_CR_CROSS:
+-            [[NSCursor crosshairCursor] set];
++            cursor = [NSCursor crosshairCursor];
+             break;
+         case GML_CR_BEAM:
+-            [[NSCursor IBeamCursor] set];
++            cursor = [NSCursor IBeamCursor];
+             break;
+ #if USE_PRIVATE_API
+         case GML_CR_SIZE_NESW:
+-            [[NSCursor _windowResizeNorthEastSouthWestCursor] set];
++            cursor = [NSCursor _windowResizeNorthEastSouthWestCursor];
+             break;
+         case GML_CR_SIZE_NWSE:
+-            [[NSCursor _windowResizeNorthWestSouthEastCursor] set];
++            cursor = [NSCursor _windowResizeNorthWestSouthEastCursor];
+             break;
+ #endif
+ #if MAC_OS_X_VERSION_MAX_ALLOWED >= 1060 // 10.6
+         case GML_CR_SIZE_NS:
+-            [[NSCursor resizeUpDownCursor] set];
++            cursor = [NSCursor resizeUpDownCursor];
+             break;
+         case GML_CR_SIZE_WE:
+-            [[NSCursor resizeLeftRightCursor] set];
++            cursor = [NSCursor resizeLeftRightCursor];
+             break;
+ #endif
+         case GML_CR_DRAG:
+-            [[NSCursor closedHandCursor] set];
++            cursor = [NSCursor closedHandCursor];
+             break;
+         case GML_CR_HANDPOINT:
+-            [[NSCursor pointingHandCursor] set];
++            cursor = [NSCursor pointingHandCursor];
+             break;
+         case GML_CR_SIZE_ALL:
+-            [[NSCursor openHandCursor] set];
++            cursor = [NSCursor openHandCursor];
+             break;
+ 
+         // Uparrow, hourglass, and appstart cursors are not available on macOS, so we fall back to the arrow cursor for these cases.
+@@ -703,9 +729,12 @@ static void platformSetCursor(int32_t cursorType) {
+         case GML_CR_HOURGLASS:
+         case GML_CR_APPSTART:
+         default:
+-            [[NSCursor arrowCursor] set];
++            cursor = [NSCursor arrowCursor];
+             break;
+     }
++    [viewCursor release];
++    viewCursor = [cursor retain];
++    [window invalidateCursorRectsForView:glView];
+ }
+ 
+ static bool windowIsFocused(void) {
+diff --git a/src/loop.c b/src/loop.c
+index 6f8c325..f4634b9 100644
+--- a/src/loop.c
++++ b/src/loop.c
+@@ -998,6 +998,12 @@ int loop(CommandLineArgs args, const char *argv0) {
+         Runner_setGameArgs(runner, currentGameArgs, (int32_t) arrlen(currentGameArgs));
+         platformInitFunctions(runner);
+ 
++        // The game's "Display cursor" option (OPTN ShowCursor) unticked: start as if it had called window_set_cursor(cr_none).
++        if ((runner->dataWin->optn.info & 0x10) == 0 && runner->setCursor != nullptr) {
++            runner->currentCursor = GML_CR_NONE;
++            runner->setCursor(GML_CR_NONE);
++        }
++
+         // Before the first game event: the game may ask about an achievement from its first frame.
+         Steamworks_init();
+ 

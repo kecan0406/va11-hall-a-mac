@@ -30,10 +30,12 @@ file in the game's Steam folder so the Play button starts it. For achievements i
 | `0001` audio | Ogg files that carry a Theora video stream next to the Vorbis audio were silent; the patch hands the decoder only the Vorbis pages. |
 | `0002` mouse | The cursor was mirrored vertically, and on Retina displays it ran up to twice the real position. |
 | `0003` input recording | Records and replays the mouse, not just the keyboard. What the automatic checks use. |
-| `0004` fullscreen | Implements the fullscreen functions the game's options menu uses. |
+| `0004` fullscreen | Implements the fullscreen functions the game's options menu uses. A fullscreen start waits until the window has focus: going fullscreen before that could leave it without focus, so keystrokes were lost and the system cursor showed. |
 | `0005` room warp | Lets a recording jump into a room the game only enters through its own logic. Test aid only. |
 | `0006` data files | Loads data files whose fonts and strings sit outside their own chunks, as fan translations built with font tools have. |
 | `0007` achievements | Unlocks Steam achievements through the `libsteam_api.dylib` next to the runner. Without that file the game runs as before. |
+| `0008` options menu | Clicks were tested against an object's whole sprite instead of its collision rect. The options menu's video rows are full-panel sprites stacked at one position, so one click pressed all of them: turning scanlines on also switched to fullscreen. |
+| `0009` cursor | The system cursor showed next to the game's own hand. The game's "Display cursor" option is off, so the cursor is now hidden over the game, and only there: the title bar and other windows keep it. |
 
 These are fixes to Butterscotch, not to the game.
 
